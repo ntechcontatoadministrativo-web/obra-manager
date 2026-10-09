@@ -14,8 +14,7 @@ datasource db {
   provider = "postgresql"
   // Em produção (Neon): conexão agrupada (host com "-pooler"), usada em tempo de execução.
   url      = env("DATABASE_URL")
-  // Conexão direta, exigida pelas migrations. Localmente pode ser igual à de cima.
-  directUrl = env("DIRECT_URL")
+ directUrl = env("DIRECT_URL")
 }
 
 // ------------------------------- ENUMS -------------------------------
