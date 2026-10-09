@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Paleta: concreto (fundo), asfalto (menu), laranja de obra (ação), amarelo de sinalização (destaque) */
+:root {
+  --bg: 238 237 233;
+  --card: 255 255 255;
+  --ink: 31 33 36;
+  --muted: 107 110 115;
+  --line: 217 215 209;
+  --asfalto: 38 40 43;
+  --laranja: 214 78 8;       /* contraste AA com branco */
+  --laranja-fg: 255 255 255;
+  --amarelo: 245 183 0;
+  --ok: 22 128 61;
+  --alerta: 180 110 0;
+  --perigo: 190 30 45;
+}
+.dark {
+  --bg: 23 24 26;
+  --card: 34 36 39;
+  --ink: 242 241 237;
+  --muted: 158 161 166;
+  --line: 52 55 59;
+  --asfalto: 14 15 16;
+  --laranja: 245 124 40;
+  --laranja-fg: 23 24 26;
+  --amarelo: 245 183 0;
+  --ok: 74 200 120;
+  --alerta: 245 183 0;
+  --perigo: 245 100 110;
+}
+
+html { color-scheme: light; }
+html.dark { color-scheme: dark; }
+body { @apply bg-bg text-ink font-sans antialiased; }
+
+/* Foco visível para teclado */
+:focus-visible { outline: 2px solid rgb(var(--laranja)); outline-offset: 2px; }
+
+/* Faixa de sinalização — usada uma única vez, na tela de login */
+.faixa-obra {
+  background: repeating-linear-gradient(-45deg, rgb(var(--amarelo)) 0 14px, rgb(var(--asfalto)) 14px 28px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* Impressão / PDF: sem menus, fundo branco, letras pretas */
+@media print {
+  :root, .dark { --bg: 255 255 255; --card: 255 255 255; --ink: 0 0 0; --muted: 70 70 70; --line: 190 190 190; }
+  body { background: #fff; }
+  @page { margin: 14mm; }
+}

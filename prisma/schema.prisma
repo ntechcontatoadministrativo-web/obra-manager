@@ -1,0 +1,866 @@
+// =====================================================================
+// Schema do banco de dados — Sistema de Gestão de Obras
+// Módulos: Obras, Usuários, Ponto, Diário, Etapas, Compras, Financeiro,
+// Ocorrências, Documentos, Equipamentos, Segurança (NR), Contrato.
+// Campos sensíveis (CPF, dados bancários, segredo TOTP) são gravados
+// CRIPTOGRAFADOS (sufixo "Enc") — veja src/lib/crypto.ts.
+// =====================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  // Em produção (Neon): conexão agrupada (host com "-pooler"), usada em tempo de execução.
+  url      = env("DATABASE_URL")
+  // Conexão direta, exigida pelas migrations. Localmente pode ser igual à de cima.
+  directUrl = env("DIRECT_URL")
+}
+
+// ------------------------------- ENUMS -------------------------------
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN_OBRA
+  ENCARREGADO
+  FISCAL
+  VISUALIZADOR
+}
+
+enum ObraStatus {
+  EM_PLANEJAMENTO
+  EM_ANDAMENTO
+  PARALISADA
+  CONCLUIDA
+  ARQUIVADA
+}
+
+enum Vinculo {
+  CLT
+  MEI
+  DIARISTA
+  EMPREITADA
+}
+
+enum DiaTipo {
+  TRABALHADO
+  FALTA
+  FALTA_JUSTIFICADA
+  AFASTAMENTO
+  ATESTADO
+  FOLGA
+}
+
+enum Turno {
+  MANHA
+  TARDE
+  INTEGRAL
+}
+
+enum Clima {
+  ENSOLARADO
+  NUBLADO
+  CHUVOSO
+  TEMPESTADE
+}
+
+enum ImpactoClima {
+  SEM_IMPACTO
+  PRODUCAO_REDUZIDA
+  PARALISACAO_PARCIAL
+  PARALISACAO_TOTAL
+}
+
+enum EtapaStatus {
+  NAO_INICIADA
+  EM_ANDAMENTO
+  CONCLUIDA
+  ATRASADA
+  PARALISADA
+}
+
+enum Urgencia {
+  URGENTE
+  NORMAL
+  PLANEJADA
+}
+
+enum CompraStatus {
+  AGUARDANDO_ADMIN_OBRA
+  AGUARDANDO_SUPER_ADMIN
+  APROVADA
+  REPROVADA
+  PO_EMITIDA
+  ENVIADA_FORNECEDOR
+  ENTREGUE
+  CANCELADA
+}
+
+enum DespesaTipo {
+  MATERIAL
+  MAO_DE_OBRA
+  EQUIPAMENTO
+  SERVICO
+  TAXA
+  OUTROS
+}
+
+enum FormaPagamento {
+  A_VISTA
+  A_PRAZO
+}
+
+enum OcorrenciaTipo {
+  ACIDENTE_TRABALHO
+  DESVIO_QUALIDADE
+  ATRASO_ENTREGA
+  PROBLEMA_TECNICO
+  OUTRO
+}
+
+enum OcorrenciaClasse {
+  SEGURANCA
+  QUALIDADE
+  PRAZO
+  FINANCEIRO
+  AMBIENTAL
+}
+
+enum Severidade {
+  BAIXO
+  MEDIO
+  ALTO
+  CRITICO
+}
+
+enum OcorrenciaStatus {
+  ABERTA
+  EM_TRATATIVA
+  ENCERRADA
+}
+
+enum DocCategoria {
+  CONTRATO
+  PROJETO
+  LAUDO
+  LICENCA
+  NF
+  SEGURO
+  OUTROS
+}
+
+enum ManutencaoTipo {
+  PREVENTIVA
+  CORRETIVA
+}
+
+enum NotificacaoTipo {
+  COMPRA_PENDENTE
+  ETAPA_ATRASADA
+  ORCAMENTO_ESTOURADO
+  PONTO_AUSENTE
+  DIARIO_PENDENTE
+  NOVA_OCORRENCIA
+  DOCUMENTO_VENCENDO
+  CONTRATO_VENCENDO
+  LOCACAO_DEVOLUCAO
+  TREINAMENTO_VENCENDO
+}
+
+// --------------------- EMPRESA, USUÁRIOS, PERMISSÕES -----------------
+
+model Empresa {
+  id       String   @id @default(cuid())
+  nome     String
+  cnpj     String?  @unique
+  criadoEm DateTime @default(now())
+
+  usuarios     User[]
+  obras        Obra[]
+  fornecedores Fornecedor[]
+  insumos      Insumo[]
+  equipamentos Equipamento[]
+  configuracao Configuracao?
+}
+
+/// Parâmetros globais configuráveis pelo Super Admin.
+model Configuracao {
+  id                       String  @id @default(cuid())
+  empresaId                String  @unique
+  jornadaHorasDia          Decimal @default(8) @db.Decimal(4, 2)
+  jornadaDiasSemana        Int     @default(5)
+  limiteAprovacaoCompra    Decimal @default(5000) @db.Decimal(14, 2)
+  alertaDesvioOrcamentoPct Decimal @default(10) @db.Decimal(5, 2)
+  alertaDesvioPrecoPct     Decimal @default(15) @db.Decimal(5, 2)
+  raioGpsMetros            Int     @default(150)
+  diasSemPontoAlerta       Int     @default(3)
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id            String    @id @default(cuid())
+  empresaId     String
+  nome          String
+  email         String    @unique
+  senhaHash     String
+  /// Perfil global. SUPER_ADMIN acessa todas as obras;
+  /// os demais dependem de ObraMembro.
+  role          Role
+  ativo         Boolean   @default(true)
+  fotoUrl       String?
+  // 2FA (TOTP). Obrigatório para SUPER_ADMIN.
+  totpSecretEnc String?
+  totpAtivo     Boolean   @default(false)
+  // Proteção contra força bruta.
+  tentativasLogin Int       @default(0)
+  bloqueadoAte    DateTime?
+  criadoPorId   String?
+  criadoEm      DateTime  @default(now())
+  atualizadoEm  DateTime  @updatedAt
+  /// LGPD: exclusão a pedido é feita por anonimização (preserva auditoria).
+  anonimizadoEm DateTime?
+
+  empresa      Empresa       @relation(fields: [empresaId], references: [id])
+  criadoPor    User?         @relation("CriadoPor", fields: [criadoPorId], references: [id])
+  criados      User[]        @relation("CriadoPor")
+  membros      ObraMembro[]
+  auditorias   AuditLog[]
+  notificacoes Notificacao[]
+
+  @@index([empresaId])
+}
+
+/// Vínculo usuário <-> obra, com o perfil naquela obra.
+model ObraMembro {
+  id     String @id @default(cuid())
+  userId String
+  obraId String
+  role   Role
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  obra Obra @relation(fields: [obraId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, obraId])
+  @@index([obraId])
+}
+
+/// Log de auditoria: quem fez, o quê, quando.
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  obraId     String?
+  acao       String // CRIAR, EDITAR, APROVAR, EXCLUIR, LOGIN...
+  entidade   String // ex.: "SolicitacaoCompra"
+  entidadeId String?
+  antes      Json?
+  depois     Json?
+  ip         String?
+  criadoEm   DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entidade, entidadeId])
+  @@index([obraId, criadoEm])
+}
+
+model Notificacao {
+  id       String          @id @default(cuid())
+  userId   String
+  obraId   String?
+  tipo     NotificacaoTipo
+  titulo   String
+  mensagem String
+  lida     Boolean         @default(false)
+  criadoEm DateTime        @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, lida])
+}
+
+// ------------------------------ MÓDULO 1: OBRAS ----------------------
+
+model Obra {
+  id                  String     @id @default(cuid())
+  empresaId           String
+  nome                String
+  endereco            String
+  latitude            Float?
+  longitude           Float?
+  clienteNome         String
+  engenheiroNome      String?
+  dataInicio          DateTime
+  previsaoTermino     DateTime
+  valorContrato       Decimal    @db.Decimal(14, 2)
+  areaConstruidaM2    Decimal?   @db.Decimal(10, 2)
+  status              ObraStatus @default(EM_PLANEJAMENTO)
+  descricao           String?
+  /// Sobrescreve o raio global de GPS para o ponto, se preenchido.
+  raioGpsMetros       Int?
+  /// Token do link público da galeria (sem login).
+  tokenGaleriaPublica String?    @unique
+  criadoEm            DateTime   @default(now())
+  atualizadoEm        DateTime   @updatedAt
+
+  empresa      Empresa             @relation(fields: [empresaId], references: [id])
+  membros      ObraMembro[]
+  funcionarios Funcionario[]
+  pontos       RegistroPonto[]
+  diarios      DiarioObra[]
+  etapas       Etapa[]
+  medicoes     Medicao[]
+  compras      SolicitacaoCompra[]
+  despesas     Despesa[]
+  ocorrencias  Ocorrencia[]
+  fotos        Foto[]
+  documentos   Documento[]
+  locacoes     Locacao[]
+  usosEquip    UsoEquipamento[]
+  contrato     ContratoCliente?
+  inspecoes    InspecaoSeguranca[]
+
+  @@index([empresaId, status])
+}
+
+// ------------------------------ MÓDULO 2: PONTO ----------------------
+
+model Funcionario {
+  id                String    @id @default(cuid())
+  obraId            String
+  nome              String
+  /// CPF criptografado (AES-256-GCM) + hash HMAC para busca/unicidade.
+  cpfEnc            String
+  cpfHash           String
+  funcao            String
+  terceiro          Boolean   @default(false)
+  empresaTerceira   String?
+  vinculo           Vinculo
+  telefone          String?
+  dadosBancariosEnc String?
+  fotoUrl           String?
+  valorHora         Decimal?  @db.Decimal(10, 2)
+  valorDiaria       Decimal?  @db.Decimal(10, 2)
+  ativo             Boolean   @default(true)
+  criadoEm          DateTime  @default(now())
+  anonimizadoEm     DateTime?
+
+  obra         Obra            @relation(fields: [obraId], references: [id], onDelete: Cascade)
+  pontos       RegistroPonto[]
+  epis         EpiEntrega[]
+  treinamentos Treinamento[]
+
+  @@unique([obraId, cpfHash])
+  @@index([obraId, ativo])
+}
+
+model RegistroPonto {
+  id            String  @id @default(cuid())
+  obraId        String
+  funcionarioId String
+  data          DateTime @db.Date
+  tipo          DiaTipo  @default(TRABALHADO)
+
+  entradaEm      DateTime?
+  entradaFotoUrl String?
+  entradaLat     Float?
+  entradaLng     Float?
+  entradaNoRaio  Boolean?
+
+  almocoSaidaEm DateTime?
+  almocoVoltaEm DateTime?
+
+  saidaEm      DateTime?
+  saidaFotoUrl String?
+  saidaLat     Float?
+  saidaLng     Float?
+  saidaNoRaio  Boolean?
+
+  atestadoUrl        String?
+  observacao         String?
+  registradoPorId    String?
+  /// true se o encarregado lançou no lugar do funcionário.
+  lancadoPorTerceiro Boolean  @default(false)
+  criadoEm           DateTime @default(now())
+
+  obra        Obra        @relation(fields: [obraId], references: [id], onDelete: Cascade)
+  funcionario Funcionario @relation(fields: [funcionarioId], references: [id], onDelete: Cascade)
+
+  @@unique([funcionarioId, data])
+  @@index([obraId, data])
+}
+
+// ------------------------------ MÓDULO 3: DIÁRIO ---------------------
+
+model DiarioObra {
+  id            String       @id @default(cuid())
+  obraId        String
+  data          DateTime     @db.Date
+  turno         Turno
+  clima         Clima
+  temperaturaC  Int?
+  impactoClima  ImpactoClima @default(SEM_IMPACTO)
+  obsClima      String?
+  descricao     String
+  observacoes   String?
+  assinaturaUrl String?
+  assinadoPorId String?
+  assinadoEm    DateTime?
+  criadoPorId   String
+  criadoEm      DateTime     @default(now())
+  atualizadoEm  DateTime     @updatedAt
+
+  obra         Obra                @relation(fields: [obraId], references: [id], onDelete: Cascade)
+  efetivo      DiarioEfetivo[]
+  atividades   DiarioAtividade[]
+  equipamentos DiarioEquipamento[]
+  visitas      DiarioVisita[]
+  fotos        Foto[]
+  ocorrencias  Ocorrencia[]
+
+  @@unique([obraId, data, turno])
+}
+
+model DiarioEfetivo {
+  id         String  @id @default(cuid())
+  diarioId   String
+  funcao     String
+  quantidade Int
+  terceiro   Boolean @default(false)
+  empresa    String?
+
+  diario DiarioObra @relation(fields: [diarioId], references: [id], onDelete: Cascade)
+}
+
+model DiarioAtividade {
+  id         String   @id @default(cuid())
+  diarioId   String
+  etapaId    String
+  descricao  String?
+  quantidade Decimal? @db.Decimal(12, 3)
+  unidade    String?
+
+  diario DiarioObra @relation(fields: [diarioId], references: [id], onDelete: Cascade)
+  etapa  Etapa      @relation(fields: [etapaId], references: [id])
+}
+
+model DiarioEquipamento {
+  id            String  @id @default(cuid())
+  diarioId      String
+  equipamentoId String
+  horasUso      Decimal @db.Decimal(5, 2)
+
+  diario      DiarioObra  @relation(fields: [diarioId], references: [id], onDelete: Cascade)
+  equipamento Equipamento @relation(fields: [equipamentoId], references: [id])
+}
+
+model DiarioVisita {
+  id            String  @id @default(cuid())
+  diarioId      String
+  nome          String
+  tipo          String // cliente, fiscal, inspetor...
+  assinaturaUrl String?
+
+  diario DiarioObra @relation(fields: [diarioId], references: [id], onDelete: Cascade)
+}
+
+// ------------------------------ MÓDULO 4: ETAPAS ---------------------
+
+model Etapa {
+  id                 String      @id @default(cuid())
+  obraId             String
+  paiId              String?
+  nome               String
+  ordem              Int         @default(0)
+  inicioPrevisto     DateTime
+  fimPrevisto        DateTime
+  inicioReal         DateTime?
+  fimReal            DateTime?
+  percentual         Decimal     @default(0) @db.Decimal(5, 2)
+  valorOrcado        Decimal     @default(0) @db.Decimal(14, 2)
+  responsavelId      String?
+  status             EtapaStatus @default(NAO_INICIADA)
+  criterioMedicao    String? // m², un, pontos...
+  quantidadePrevista Decimal?    @db.Decimal(12, 3)
+
+  obra         Obra                @relation(fields: [obraId], references: [id], onDelete: Cascade)
+  pai          Etapa?              @relation("EtapaArvore", fields: [paiId], references: [id])
+  filhas       Etapa[]             @relation("EtapaArvore")
+  atividades   DiarioAtividade[]
+  medicaoItens MedicaoItem[]
+  despesas     Despesa[]
+  compras      SolicitacaoCompra[]
+  fotos        Foto[]
+
+  @@index([obraId, paiId])
+}
+
+model Medicao {
+  id              String   @id @default(cuid())
+  obraId          String
+  numero          Int
+  periodoInicio   DateTime @db.Date
+  periodoFim      DateTime @db.Date
+  avancoGlobalPct Decimal  @default(0) @db.Decimal(5, 2)
+  valorMedido     Decimal  @default(0) @db.Decimal(14, 2)
+  criadoPorId     String
+  criadoEm        DateTime @default(now())
+
+  obra  Obra          @relation(fields: [obraId], references: [id], onDelete: Cascade)
+  itens MedicaoItem[]
+
+  @@unique([obraId, numero])
+}
+
+model MedicaoItem {
+  id                  String  @id @default(cuid())
+  medicaoId           String
+  etapaId             String
+  percentualAcumulado Decimal @db.Decimal(5, 2)
+  percentualPeriodo   Decimal @db.Decimal(5, 2)
+
+  medicao Medicao @relation(fields: [medicaoId], references: [id], onDelete: Cascade)
+  etapa   Etapa   @relation(fields: [etapaId], references: [id])
+}
+
+// ------------------------------ MÓDULO 5: COMPRAS / FINANCEIRO -------
+
+model Fornecedor {
+  id               String   @id @default(cuid())
+  empresaId        String
+  nome             String
+  cnpj             String?
+  contato          String?
+  email            String?
+  telefone         String?
+  prazoEntregaDias Int?
+  avaliacaoMedia   Decimal? @db.Decimal(3, 2)
+
+  empresa    Empresa               @relation(fields: [empresaId], references: [id])
+  precos     PrecoHistorico[]
+  ordens     OrdemCompra[]
+  locacoes   Locacao[]
+  avaliacoes AvaliacaoFornecedor[]
+
+  @@unique([empresaId, cnpj])
+}
+
+model AvaliacaoFornecedor {
+  id           String   @id @default(cuid())
+  fornecedorId String
+  ordemId      String?
+  nota         Int // 1..5
+  comentario   String?
+  criadoEm     DateTime @default(now())
+
+  fornecedor Fornecedor @relation(fields: [fornecedorId], references: [id], onDelete: Cascade)
+}
+
+model Insumo {
+  id        String @id @default(cuid())
+  empresaId String
+  nome      String
+  categoria String
+  unidade   String
+
+  empresa Empresa           @relation(fields: [empresaId], references: [id])
+  precos  PrecoHistorico[]
+  itens   SolicitacaoItem[]
+
+  @@unique([empresaId, nome])
+}
+
+model PrecoHistorico {
+  id           String   @id @default(cuid())
+  insumoId     String
+  fornecedorId String
+  preco        Decimal  @db.Decimal(12, 2)
+  cotadoEm     DateTime @default(now())
+
+  insumo     Insumo     @relation(fields: [insumoId], references: [id], onDelete: Cascade)
+  fornecedor Fornecedor @relation(fields: [fornecedorId], references: [id], onDelete: Cascade)
+
+  @@index([insumoId, cotadoEm])
+}
+
+model SolicitacaoCompra {
+  id                      String       @id @default(cuid())
+  obraId                  String
+  etapaId                 String?
+  solicitanteId           String
+  urgencia                Urgencia     @default(NORMAL)
+  justificativa           String
+  status                  CompraStatus @default(AGUARDANDO_ADMIN_OBRA)
+  valorEstimado           Decimal      @default(0) @db.Decimal(14, 2)
+  aprovadoAdminObraPorId  String?
+  aprovadoSuperAdminPorId String?
+  motivoReprovacao        String?
+  criadoEm                DateTime     @default(now())
+  atualizadoEm            DateTime     @updatedAt
+
+  obra  Obra              @relation(fields: [obraId], references: [id], onDelete: Cascade)
+  etapa Etapa?            @relation(fields: [etapaId], references: [id])
+  itens SolicitacaoItem[]
+  ordem OrdemCompra?
+  fotos Foto[]
+
+  @@index([obraId, status])
+}
+
+model SolicitacaoItem {
+  id                String   @id @default(cuid())
+  solicitacaoId     String
+  insumoId          String
+  quantidade        Decimal  @db.Decimal(12, 3)
+  precoUnitEstimado Decimal? @db.Decimal(12, 2)
+
+  solicitacao SolicitacaoCompra @relation(fields: [solicitacaoId], references: [id], onDelete: Cascade)
+  insumo      Insumo            @relation(fields: [insumoId], references: [id])
+}
+
+model OrdemCompra {
+  id            String    @id @default(cuid())
+  solicitacaoId String    @unique
+  fornecedorId  String
+  numero        String    @unique
+  valorTotal    Decimal   @db.Decimal(14, 2)
+  enviadaEm     DateTime?
+  entregueEm    DateTime?
+
+  solicitacao SolicitacaoCompra @relation(fields: [solicitacaoId], references: [id])
+  fornecedor  Fornecedor        @relation(fields: [fornecedorId], references: [id])
+  despesa     Despesa?
+}
+
+model Despesa {
+  id             String         @id @default(cuid())
+  obraId         String
+  etapaId        String? // centro de custo
+  ordemCompraId  String?        @unique
+  tipo           DespesaTipo
+  descricao      String
+  valor          Decimal        @db.Decimal(14, 2)
+  formaPagamento FormaPagamento
+  competencia    DateTime       @db.Date
+  pagamento      DateTime?      @db.Date
+  documentoUrl   String?
+  criadoPorId    String
+  criadoEm       DateTime       @default(now())
+
+  obra  Obra         @relation(fields: [obraId], references: [id], onDelete: Cascade)
+  etapa Etapa?       @relation(fields: [etapaId], references: [id])
+  ordem OrdemCompra? @relation(fields: [ordemCompraId], references: [id])
+
+  @@index([obraId, competencia])
+}
+
+// ------------------------------ MÓDULOS 7, 8: FOTOS, OCORRÊNCIAS -----
+
+model Foto {
+  id           String   @id @default(cuid())
+  obraId       String
+  etapaId      String?
+  diarioId     String?
+  compraId     String?
+  ocorrenciaId String?
+  url          String
+  legenda      String?
+  tiradaEm     DateTime @default(now())
+  latitude     Float?
+  longitude    Float?
+  album        String?
+  /// "ANTES" | "DEPOIS" para o comparativo visual.
+  momento      String?
+  enviadaPorId String?
+
+  obra       Obra               @relation(fields: [obraId], references: [id], onDelete: Cascade)
+  etapa      Etapa?             @relation(fields: [etapaId], references: [id])
+  diario     DiarioObra?        @relation(fields: [diarioId], references: [id], onDelete: SetNull)
+  compra     SolicitacaoCompra? @relation(fields: [compraId], references: [id], onDelete: SetNull)
+  ocorrencia Ocorrencia?        @relation(fields: [ocorrenciaId], references: [id], onDelete: SetNull)
+
+  @@index([obraId, tiradaEm])
+}
+
+model Ocorrencia {
+  id            String           @id @default(cuid())
+  obraId        String
+  diarioId      String?
+  tipo          OcorrenciaTipo
+  classe        OcorrenciaClasse
+  severidade    Severidade
+  titulo        String
+  descricao     String
+  responsavelId String?
+  prazo         DateTime?
+  status        OcorrenciaStatus @default(ABERTA)
+  criadoPorId   String
+  criadoEm      DateTime         @default(now())
+  encerradaEm   DateTime?
+
+  obra       Obra                  @relation(fields: [obraId], references: [id], onDelete: Cascade)
+  diario     DiarioObra?           @relation(fields: [diarioId], references: [id], onDelete: SetNull)
+  tratativas OcorrenciaTratativa[]
+  fotos      Foto[]
+
+  @@index([obraId, status])
+}
+
+model OcorrenciaTratativa {
+  id           String   @id @default(cuid())
+  ocorrenciaId String
+  autorId      String
+  texto        String
+  criadoEm     DateTime @default(now())
+
+  ocorrencia Ocorrencia @relation(fields: [ocorrenciaId], references: [id], onDelete: Cascade)
+}
+
+// ------------------------------ MÓDULO 10: DOCUMENTOS ----------------
+
+model Documento {
+  id                 String       @id @default(cuid())
+  obraId             String
+  categoria          DocCategoria
+  nome               String
+  vencimento         DateTime?
+  /// Perfis que podem visualizar. Vazio = padrão da matriz de permissões.
+  perfisVisualizacao Role[]
+  criadoEm           DateTime     @default(now())
+
+  obra   Obra              @relation(fields: [obraId], references: [id], onDelete: Cascade)
+  versoes DocumentoVersao[]
+
+  @@index([obraId, categoria])
+}
+
+model DocumentoVersao {
+  id            String    @id @default(cuid())
+  documentoId   String
+  versao        Int
+  url           String
+  assinadoPorId String?
+  assinadoEm    DateTime?
+  enviadoPorId  String
+  criadoEm      DateTime  @default(now())
+
+  documento Documento @relation(fields: [documentoId], references: [id], onDelete: Cascade)
+
+  @@unique([documentoId, versao])
+}
+
+// ------------------------------ MÓDULO 11: EQUIPAMENTOS --------------
+
+model Equipamento {
+  id        String  @id @default(cuid())
+  empresaId String
+  nome      String
+  codigo    String?
+
+  empresa     Empresa             @relation(fields: [empresaId], references: [id])
+  usos        UsoEquipamento[]
+  manutencoes Manutencao[]
+  diarios     DiarioEquipamento[]
+}
+
+model UsoEquipamento {
+  id            String   @id @default(cuid())
+  equipamentoId String
+  obraId        String
+  data          DateTime @db.Date
+  horas         Decimal  @db.Decimal(5, 2)
+
+  equipamento Equipamento @relation(fields: [equipamentoId], references: [id], onDelete: Cascade)
+  obra        Obra        @relation(fields: [obraId], references: [id], onDelete: Cascade)
+}
+
+model Manutencao {
+  id            String         @id @default(cuid())
+  equipamentoId String
+  tipo          ManutencaoTipo
+  data          DateTime       @db.Date
+  descricao     String
+  custo         Decimal?       @db.Decimal(12, 2)
+
+  equipamento Equipamento @relation(fields: [equipamentoId], references: [id], onDelete: Cascade)
+}
+
+model Locacao {
+  id                String    @id @default(cuid())
+  obraId            String
+  fornecedorId      String
+  item              String
+  inicio            DateTime  @db.Date
+  devolucaoPrevista DateTime  @db.Date
+  devolvidoEm       DateTime? @db.Date
+  valorDiario       Decimal?  @db.Decimal(12, 2)
+  valorMensal       Decimal?  @db.Decimal(12, 2)
+
+  obra       Obra       @relation(fields: [obraId], references: [id], onDelete: Cascade)
+  fornecedor Fornecedor @relation(fields: [fornecedorId], references: [id])
+}
+
+// ------------------------------ MÓDULO 12: SEGURANÇA (NR) ------------
+
+model Treinamento {
+  id             String    @id @default(cuid())
+  funcionarioId  String
+  norma          String // NR-35, NR-18, NR-10...
+  realizadoEm    DateTime  @db.Date
+  validadeAte    DateTime? @db.Date
+  certificadoUrl String?
+
+  funcionario Funcionario @relation(fields: [funcionarioId], references: [id], onDelete: Cascade)
+}
+
+model EpiEntrega {
+  id            String   @id @default(cuid())
+  funcionarioId String
+  item          String
+  ca            String? // nº do Certificado de Aprovação
+  entregueEm    DateTime @db.Date
+  assinaturaUrl String?
+
+  funcionario Funcionario @relation(fields: [funcionarioId], references: [id], onDelete: Cascade)
+}
+
+model InspecaoSeguranca {
+  id         String   @id @default(cuid())
+  obraId     String
+  data       DateTime @db.Date
+  resultado  String
+  inspetorId String
+  anexoUrl   String?
+
+  obra Obra @relation(fields: [obraId], references: [id], onDelete: Cascade)
+}
+
+// ------------------------------ MÓDULO 13: CONTRATO COM CLIENTE ------
+
+model ContratoCliente {
+  id           String    @id @default(cuid())
+  obraId       String    @unique
+  valorTotal   Decimal   @db.Decimal(14, 2)
+  assinadoEm   DateTime? @db.Date
+  vencimento   DateTime? @db.Date
+  documentoUrl String?
+
+  obra     Obra             @relation(fields: [obraId], references: [id], onDelete: Cascade)
+  parcelas ParcelaCliente[]
+}
+
+model ParcelaCliente {
+  id            String    @id @default(cuid())
+  contratoId    String
+  numero        Int
+  vencimento    DateTime  @db.Date
+  valorPrevisto Decimal   @db.Decimal(14, 2)
+  valorMedido   Decimal   @default(0) @db.Decimal(14, 2)
+  pagoEm        DateTime? @db.Date
+  valorPago     Decimal?  @db.Decimal(14, 2)
+
+  contrato ContratoCliente @relation(fields: [contratoId], references: [id], onDelete: Cascade)
+
+  @@unique([contratoId, numero])
+}

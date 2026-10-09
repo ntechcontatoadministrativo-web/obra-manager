@@ -1,0 +1,34 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      # Chaves descartáveis, só para o CI. Não são as de produção.
+      ENCRYPTION_KEY: ${{ secrets.TEST_ENCRYPTION_KEY }}
+      HASH_KEY: ${{ secrets.TEST_HASH_KEY }}
+      NEXTAUTH_SECRET: ci-secret-nao-usar-em-producao
+      NEXTAUTH_URL: http://localhost:3000
+      DATABASE_URL: postgresql://obra:obra@localhost:5432/obra_manager
+      DIRECT_URL: postgresql://obra:obra@localhost:5432/obra_manager
+    services:
+      db:
+        image: postgres:16
+        env: { POSTGRES_USER: obra, POSTGRES_PASSWORD: obra, POSTGRES_DB: obra_manager }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npx prisma validate
+      - run: npx prisma migrate deploy
+      - run: npm run typecheck
+      - run: npm test
+      # Compila de verdade. Sem este passo dá para quebrar o build e o CI
+      # passar verde — o erro só aparece no deploy.
+      - run: npm run build:local
