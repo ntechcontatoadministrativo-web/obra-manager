@@ -10,7 +10,7 @@ import { statusEfetivo } from "@/lib/etapas";
 import { dataLocalISO, dataParaBanco } from "@/lib/ponto";
 import { brl, dataBR } from "@/lib/utils";
 import Link from "next/link";
-import { Clock, GanttChart, NotebookPen } from "lucide-react";
+import { TrendingUp, Clock, GanttChart, NotebookPen, ShieldAlert } from "lucide-react";
 import { Badge, Card, Progresso, TITULO } from "@/components/ui";
 import { StatusObra } from "./status-obra";
 
@@ -82,6 +82,20 @@ export default async function ObraPage({ params }: { params: { id: string } }) {
           <div>
             <Link href={`/obras/${obra.id}/diario`} className="inline-flex min-h-11 items-center gap-2 rounded border border-line bg-card px-4 text-sm font-semibold hover:border-laranja">
               <NotebookPen size={18} aria-hidden /> Diário de obra
+            </Link>
+          </div>
+        )}
+        {can(perfil, "analise", "ver") && (
+          <div>
+            <Link href={`/obras/${obra.id}/analise`} className="inline-flex min-h-11 items-center gap-2 rounded border border-line bg-card px-4 text-sm font-semibold hover:border-laranja">
+              <TrendingUp size={18} aria-hidden /> Análise do projeto
+            </Link>
+          </div>
+        )}
+        {can(perfil, "risco", "ver") && (
+          <div>
+            <Link href={`/obras/${obra.id}/riscos`} className="inline-flex min-h-11 items-center gap-2 rounded border border-line bg-card px-4 text-sm font-semibold hover:border-laranja">
+              <ShieldAlert size={18} aria-hidden /> Riscos
             </Link>
           </div>
         )}

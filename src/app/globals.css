@@ -16,6 +16,11 @@
   --ok: 22 128 61;
   --alerta: 180 110 0;
   --perigo: 190 30 45;
+  /* Séries de gráfico. Separadas das cores de status de propósito: ok e
+     perigo significam "bom" e "ruim", e uma linha de curva S não é nem
+     uma coisa nem outra. O par passou nos testes de daltonismo. */
+  --serie-ev: 214 78 8;
+  --serie-ac: 29 111 184;
 }
 .dark {
   --bg: 23 24 26;
@@ -30,6 +35,8 @@
   --ok: 74 200 120;
   --alerta: 245 183 0;
   --perigo: 245 100 110;
+  --serie-ev: 224 106 26;
+  --serie-ac: 61 146 216;
 }
 
 html { color-scheme: light; }

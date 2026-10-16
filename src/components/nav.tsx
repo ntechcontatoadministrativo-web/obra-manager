@@ -2,13 +2,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { HardHat, LayoutDashboard, UserCircle, LogOut, Moon, Sun } from "lucide-react";
+import { HardHat, LayoutDashboard, Scale, UserCircle, LogOut, Moon, Sun } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Novos módulos entram aqui conforme forem construídos.
 const ITENS = [
   { href: "/dashboard", rotulo: "Painel", icone: LayoutDashboard },
   { href: "/obras", rotulo: "Obras", icone: HardHat },
+  { href: "/comparativo", rotulo: "Comparar", icone: Scale },
   { href: "/perfil", rotulo: "Perfil", icone: UserCircle },
 ];
 

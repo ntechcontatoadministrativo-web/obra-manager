@@ -11,7 +11,10 @@ import { progressoFisico } from "@/lib/progresso";
 import { dataLocalISO, dataParaBanco } from "@/lib/ponto";
 import { brl, dataBR } from "@/lib/utils";
 import { Badge, Card, Progresso, TITULO } from "@/components/ui";
-import { GanttView } from "./gantt";
+import { carregarRede } from "@/lib/analise";
+import { GanttView, type InfoRede } from "./gantt";
+import { Dependencias, type LinhaDep } from "./dependencias";
+import { ImportarCronograma } from "./importar";
 import { Andamento, EtapaForm, EtapasPadraoBotao } from "./formularios";
 
 export const metadata: Metadata = { title: "Etapas e cronograma" };
@@ -24,10 +27,19 @@ export default async function EtapasPage({ params, searchParams }: { params: { i
   const perfil = await perfilNaObra(prisma, user, params.id).catch((e) => { if (e instanceof ForbiddenError) return null; throw e; });
   if (!perfil || !can(perfil, "etapa", "ver")) notFound();
 
-  const [obra, rows, membros] = await Promise.all([
+  const [obra, rows, membros, deps, rede] = await Promise.all([
     prisma.obra.findUnique({ where: { id: params.id }, select: { nome: true, dataInicio: true, previsaoTermino: true } }),
     prisma.etapa.findMany({ where: { obraId: params.id } }),
     prisma.obraMembro.findMany({ where: { obraId: params.id }, select: { user: { select: { id: true, nome: true } } } }),
+    prisma.etapaDependencia.findMany({
+      where: { predecessora: { obraId: params.id } },
+      select: {
+        id: true, tipo: true, folgaDias: true,
+        predecessora: { select: { id: true, nome: true } },
+        sucessora: { select: { id: true, nome: true } },
+      },
+    }),
+    carregarRede(prisma, params.id),
   ]);
   if (!obra) notFound();
 
@@ -41,6 +53,23 @@ export default async function EtapasPage({ params, searchParams }: { params: { i
   const fisico = progressoFisico(nos.map((n) => ({ paiId: n.paiId, percentual: n.percentual, valorOrcado: n.valorOrcado })));
   const status = nos.map((n) => statusEfetivo(n, hoje));
   const atrasadas = nos.filter((n, i) => status[i] === "ATRASADA" && ehFolha(nos, n.id));
+  // Rede: só vira leitura no Gantt quando não há ciclo — com ciclo não
+  // existem datas calculadas, e desenhar folga seria mentira.
+  const infoRede: InfoRede | undefined = rede.ciclo.length
+    ? undefined
+    : new Map(rede.nos.map((n) => [n.id, {
+        ehCritica: n.ehCritica,
+        folgaTotalDias: n.folgaTotalDias,
+        deslocamentoDias: n.deslocamentoDias,
+        predecessoras: deps.filter((d) => d.sucessora.id === n.id).map((d) => d.predecessora.nome),
+      }]));
+  const linhasDep: LinhaDep[] = deps.map((d) => ({
+    id: d.id, tipo: d.tipo as LinhaDep["tipo"], folgaDias: d.folgaDias,
+    predecessoraId: d.predecessora.id, predecessoraNome: d.predecessora.nome,
+    sucessoraId: d.sucessora.id, sucessoraNome: d.sucessora.nome,
+  }));
+  const folhas = nos.filter((n) => ehFolha(nos, n.id)).map((n) => ({ id: n.id, nome: n.nome }));
+
   const podeEstruturar = can(perfil, "etapa", "criar");
   const podeAndamento = can(perfil, "etapa", "editar");
   const veValores = can(perfil, "financeiro", "ver");
@@ -96,6 +125,8 @@ export default async function EtapasPage({ params, searchParams }: { params: { i
         </Card>
       )}
 
+      {podeEstruturar && <ImportarCronograma obraId={params.id} temEtapas={nos.length > 0} />}
+
       {nos.length === 0 ? (
         <Card className="space-y-3 p-6">
           <p className="font-medium">Esta obra ainda não tem etapas.</p>
@@ -107,9 +138,20 @@ export default async function EtapasPage({ params, searchParams }: { params: { i
           {gantt && (
             <section className="space-y-3">
               <h2 className="font-display text-xl font-semibold">Cronograma</h2>
-              <GanttView gantt={gantt} obraId={params.id} editavel={podeEstruturar} />
+              <GanttView gantt={gantt} obraId={params.id} editavel={podeEstruturar} rede={infoRede} />
             </section>
           )}
+
+          <section className="space-y-3">
+            <h2 className="font-display text-xl font-semibold">Rede</h2>
+            <Dependencias
+              obraId={params.id}
+              etapas={folhas}
+              deps={linhasDep}
+              podeEditar={podeAndamento}
+              avisoCiclo={rede.ciclo.length ? rede.avisos[0] : null}
+            />
+          </section>
 
           <section className="space-y-3">
             <h2 className="font-display text-xl font-semibold">Etapas</h2>

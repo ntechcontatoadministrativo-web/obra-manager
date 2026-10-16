@@ -23,9 +23,11 @@ export default async function Pagina2FA() {
   return (
     <div className="max-w-xl space-y-6">
       <h1 className={TITULO}>Verificação em duas etapas</h1>
-      {sessao.precisa2fa && (
-        <p role="note" className="rounded border border-amarelo/60 bg-amarelo/15 p-3 text-sm font-medium">
-          Para proteger as obras e os dados da empresa, o dono precisa ativar esta etapa antes de usar o sistema.
+      {sessao.sugerir2fa && (
+        <p role="note" className="rounded border border-amarelo/60 bg-amarelo/15 p-3 text-sm">
+          Esta conta tem acesso a todas as obras da empresa. Ativar a verificação
+          em duas etapas é opcional, mas recomendado antes de o sistema receber
+          dados reais.
         </p>
       )}
       {u?.totpAtivo ? (

@@ -17,6 +17,10 @@ const config: Config = {
         ok: "rgb(var(--ok) / <alpha-value>)",
         alerta: "rgb(var(--alerta) / <alpha-value>)",
         perigo: "rgb(var(--perigo) / <alpha-value>)",
+        serie: {
+          ev: "rgb(var(--serie-ev) / <alpha-value>)",
+          ac: "rgb(var(--serie-ac) / <alpha-value>)",
+        },
       },
       fontFamily: {
         // Bahnschrift (Windows) / DIN Alternate (Mac): tipografia de sinalização viária.

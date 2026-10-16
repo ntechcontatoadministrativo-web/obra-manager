@@ -9,6 +9,8 @@ import { registrarAuditoria } from "@/lib/audit";
 import { altura, estaDentroDe, etapasPadrao, ehFolha, profundidade, PROFUNDIDADE_MAX, rolarParaCima, type EtapaNo, type EtapaStatus } from "@/lib/etapas";
 import { dataISOValida, dataLocalISO, dataParaBanco } from "@/lib/ponto";
 import { parseNumeroBR } from "@/lib/utils";
+import { criariaCiclo, type Dependencia } from "@/lib/cronograma";
+import { carregarRede } from "@/lib/analise";
 
 type Res = { ok: boolean; mensagem: string; erros?: Record<string, string> };
 const NEGADO: Res = { ok: false, mensagem: "Você não tem permissão para esta ação." };
@@ -177,4 +179,101 @@ export async function criarEtapasPadrao(obraId: string): Promise<Res> {
   await registrarAuditoria(prisma, { userId: user.id, obraId, acao: "CRIAR", entidade: "Etapa", entidadeId: "modelo-padrao", depois: { quantidade: modelo.length } });
   refresh(obraId);
   return { ok: true, mensagem: `${modelo.length} etapas criadas. Agora preencha o valor orçado de cada uma.` };
+}
+
+// -------------------------- DEPENDÊNCIAS DA REDE ---------------------
+
+const TIPOS_DEP = ["TI", "II", "TT", "IT"] as const;
+
+/**
+ * Liga duas etapas. Recusa antes de gravar quando a ligação fecharia um
+ * ciclo — é mais barato explicar na tela do que deixar a rede inteira
+ * parar de calcular depois.
+ */
+export async function criarDependencia(entrada: unknown): Promise<Res> {
+  const user = await requireUser();
+  const p = z.object({
+    obraId: z.string().min(1),
+    predecessoraId: z.string().min(1),
+    sucessoraId: z.string().min(1),
+    tipo: z.enum(TIPOS_DEP).default("TI"),
+    folgaDias: z.coerce.number().int().min(-365).max(365).default(0),
+  }).safeParse(entrada);
+  if (!p.success) return { ok: false, mensagem: "Confira os campos da ligação." };
+
+  const { obraId, predecessoraId, sucessoraId, tipo, folgaDias } = p.data;
+  if (predecessoraId === sucessoraId) return { ok: false, mensagem: "Uma etapa não depende dela mesma." };
+
+  const perfil = await perfilOuNull(user, obraId);
+  if (!perfil || !can(perfil, "etapa", "editar")) return NEGADO;
+
+  // As duas etapas têm de ser desta obra — senão vira porta para IDOR.
+  const etapas = await prisma.etapa.findMany({
+    where: { obraId, id: { in: [predecessoraId, sucessoraId] } },
+    select: { id: true, nome: true },
+  });
+  if (etapas.length !== 2) return { ok: false, mensagem: "Etapa não encontrada nesta obra." };
+
+  const existentes = await prisma.etapaDependencia.findMany({
+    where: { predecessora: { obraId } },
+    select: { predecessoraId: true, sucessoraId: true, tipo: true, folgaDias: true },
+  });
+  if (criariaCiclo(predecessoraId, sucessoraId, existentes as Dependencia[])) {
+    return { ok: false, mensagem: "Essa ligação fecharia um ciclo: a segunda etapa já vem antes da primeira." };
+  }
+
+  const jaExiste = existentes.some((d) => d.predecessoraId === predecessoraId && d.sucessoraId === sucessoraId);
+  if (jaExiste) return { ok: false, mensagem: "Essas duas etapas já estão ligadas." };
+
+  const criada = await prisma.etapaDependencia.create({
+    data: { predecessoraId, sucessoraId, tipo, folgaDias },
+    select: { id: true },
+  });
+
+  await registrarAuditoria(prisma, {
+    userId: user.id, obraId, acao: "CRIAR_DEPENDENCIA", entidade: "EtapaDependencia", entidadeId: criada.id,
+  });
+  await marcarCriticas(obraId);
+  refresh(obraId);
+  return { ok: true, mensagem: "Ligação criada." };
+}
+
+export async function removerDependencia(entrada: unknown): Promise<Res> {
+  const user = await requireUser();
+  const p = z.object({ obraId: z.string().min(1), dependenciaId: z.string().min(1) }).safeParse(entrada);
+  if (!p.success) return { ok: false, mensagem: "Requisição inválida." };
+
+  const { obraId, dependenciaId } = p.data;
+  const perfil = await perfilOuNull(user, obraId);
+  if (!perfil || !can(perfil, "etapa", "editar")) return NEGADO;
+
+  const alvo = await prisma.etapaDependencia.findFirst({
+    where: { id: dependenciaId, predecessora: { obraId } },
+    select: { id: true },
+  });
+  if (!alvo) return { ok: false, mensagem: "Ligação não encontrada." };
+
+  await prisma.etapaDependencia.delete({ where: { id: alvo.id } });
+  await registrarAuditoria(prisma, {
+    userId: user.id, obraId, acao: "REMOVER_DEPENDENCIA", entidade: "EtapaDependencia", entidadeId: alvo.id,
+  });
+  await marcarCriticas(obraId);
+  refresh(obraId);
+  return { ok: true, mensagem: "Ligação removida." };
+}
+
+/**
+ * Recalcula a rede e grava, em cada etapa, se ela é crítica e qual a
+ * folga. Guardar o resultado permite ao painel e ao dashboard filtrarem
+ * por etapa crítica sem recalcular a rede inteira a cada consulta.
+ */
+export async function marcarCriticas(obraId: string) {
+  const rede = await carregarRede(prisma, obraId);
+  if (rede.ciclo.length) return; // com ciclo não há folga a gravar
+  const ups = rede.nos.map((n) =>
+    prisma.etapa.update({
+      where: { id: n.id },
+      data: { ehCritica: n.ehCritica, folgaTotalDias: n.folgaTotalDias },
+    }));
+  if (ups.length) await prisma.$transaction(ups);
 }

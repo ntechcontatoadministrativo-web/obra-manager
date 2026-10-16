@@ -74,8 +74,9 @@ async function main() {
     Empresa ........ ${empresa.nome}
     Administrador .. ${admin.email}
 
-  No primeiro login o sistema vai exigir a configuração do 2FA antes de
-  liberar qualquer tela. Tenha o aplicativo autenticador em mãos.
+  Entre com esse e-mail e a senha que você definiu. A verificação em duas
+  etapas é opcional e fica em Perfil → Verificação em duas etapas; ative
+  antes de o sistema receber dados reais.
   Troque a senha inicial depois de entrar.
 `);
 }

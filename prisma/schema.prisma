@@ -14,7 +14,8 @@ datasource db {
   provider = "postgresql"
   // Em produção (Neon): conexão agrupada (host com "-pooler"), usada em tempo de execução.
   url      = env("DATABASE_URL")
- directUrl = env("DIRECT_URL")
+  // Conexão direta, exigida pelas migrations. Localmente pode ser igual à de cima.
+  directUrl = env("DIRECT_URL")
 }
 
 // ------------------------------- ENUMS -------------------------------
@@ -165,6 +166,36 @@ enum NotificacaoTipo {
   CONTRATO_VENCENDO
   LOCACAO_DEVOLUCAO
   TREINAMENTO_VENCENDO
+  RISCO_CRITICO
+  DESEMPENHO_ABAIXO
+}
+
+/// Tipos de dependência entre atividades (PMBOK), em português:
+/// TI = término-início (o mais comum), II = início-início,
+/// TT = término-término, IT = início-término.
+enum TipoDependencia {
+  TI
+  II
+  TT
+  IT
+}
+
+enum CategoriaRisco {
+  PRAZO
+  CUSTO
+  QUALIDADE
+  SEGURANCA
+  CLIMA
+  SUPRIMENTOS
+  REGULATORIO
+  MAO_DE_OBRA
+}
+
+enum SituacaoRisco {
+  IDENTIFICADO
+  EM_MITIGACAO
+  MATERIALIZADO
+  ENCERRADO
 }
 
 // --------------------- EMPRESA, USUÁRIOS, PERMISSÕES -----------------
@@ -227,6 +258,14 @@ model User {
   membros      ObraMembro[]
   auditorias   AuditLog[]
   notificacoes Notificacao[]
+
+  // Módulo de análise
+  obrasComoResponsavel Obra[]                @relation("ResponsavelTecnico")
+  mudancasDeStatus     ObraStatusHistorico[]
+  baselinesCriadas     CronogramaBaseline[]
+  riscosSobSuaResponsa Risco[]               @relation("ResponsavelRisco")
+  riscosCriados        Risco[]               @relation("CriadorRisco")
+  mudancasDeRisco      RiscoHistorico[]
 
   @@index([empresaId])
 }
@@ -303,6 +342,19 @@ model Obra {
   criadoEm            DateTime   @default(now())
   atualizadoEm        DateTime   @updatedAt
 
+  // ---- Módulo de análise ----
+  /// Código único por empresa, no formato OBR-2026-0001.
+  codigo               String?
+  /// Responsável técnico e a ART/RRT que sustenta o diário em perícia.
+  responsavelTecnicoId String?
+  artNumero            String?
+  artEmitidaEm         DateTime?
+  tipoEngenharia       String?   // civil, elétrica, estrutural, saneamento...
+  fotoCapaUrl          String?
+  /// Datas reais, para comparar com dataInicio e previsaoTermino.
+  inicioReal           DateTime?
+  terminoReal          DateTime?
+
   empresa      Empresa             @relation(fields: [empresaId], references: [id])
   membros      ObraMembro[]
   funcionarios Funcionario[]
@@ -320,6 +372,13 @@ model Obra {
   contrato     ContratoCliente?
   inspecoes    InspecaoSeguranca[]
 
+  responsavelTecnico User?                 @relation("ResponsavelTecnico", fields: [responsavelTecnicoId], references: [id])
+  historicoStatus    ObraStatusHistorico[]
+  baselines          CronogramaBaseline[]
+  riscos             Risco[]
+  indicadores        IndicadorSemanal[]
+
+  @@unique([empresaId, codigo])
   @@index([empresaId, status])
 }
 
@@ -483,6 +542,13 @@ model Etapa {
   criterioMedicao    String? // m², un, pontos...
   quantidadePrevista Decimal?    @db.Decimal(12, 3)
 
+  /// Marco (inspeção, entrega, pagamento): tem data, não tem duração,
+  /// e aparece como losango no Gantt.
+  ehMarco        Boolean @default(false)
+  /// Preenchidos pelo cálculo de caminho crítico. Não editar à mão.
+  folgaTotalDias Int?
+  ehCritica      Boolean @default(false)
+
   obra         Obra                @relation(fields: [obraId], references: [id], onDelete: Cascade)
   pai          Etapa?              @relation("EtapaArvore", fields: [paiId], references: [id])
   filhas       Etapa[]             @relation("EtapaArvore")
@@ -491,6 +557,11 @@ model Etapa {
   despesas     Despesa[]
   compras      SolicitacaoCompra[]
   fotos        Foto[]
+
+  predecessoras EtapaDependencia[] @relation("Sucessora")
+  sucessoras    EtapaDependencia[] @relation("Predecessora")
+  itensBaseline BaselineItem[]
+  riscos        Risco[]
 
   @@index([obraId, paiId])
 }
@@ -862,4 +933,183 @@ model ParcelaCliente {
   contrato ContratoCliente @relation(fields: [contratoId], references: [id], onDelete: Cascade)
 
   @@unique([contratoId, numero])
+}
+
+// ------------------ MÓDULO 14: ANÁLISE DE PROJETOS -------------------
+// Dependências e caminho crítico, baseline de cronograma, valor agregado
+// (EVM) e riscos. Nada aqui duplica o que já existe: o custo real sai de
+// Despesa.etapaId e o avanço sai de Etapa.percentual.
+
+/// Histórico de mudança de situação da obra, com justificativa.
+/// Serve de prova em discussão de prazo com o cliente.
+model ObraStatusHistorico {
+  id            String      @id @default(cuid())
+  obraId        String
+  de            ObraStatus?
+  para          ObraStatus
+  justificativa String
+  alteradoPorId String
+  criadoEm      DateTime    @default(now())
+
+  obra        Obra @relation(fields: [obraId], references: [id], onDelete: Cascade)
+  alteradoPor User @relation(fields: [alteradoPorId], references: [id])
+
+  @@index([obraId, criadoEm])
+}
+
+/// Liga duas etapas. A folga é em dias corridos e pode ser negativa
+/// (adiantamento): "começar a alvenaria 3 dias antes de terminar a laje"
+/// é TI com folgaDias = -3.
+model EtapaDependencia {
+  id             String          @id @default(cuid())
+  predecessoraId String
+  sucessoraId    String
+  tipo           TipoDependencia @default(TI)
+  folgaDias      Int             @default(0)
+  criadoEm       DateTime        @default(now())
+
+  predecessora Etapa @relation("Predecessora", fields: [predecessoraId], references: [id], onDelete: Cascade)
+  sucessora    Etapa @relation("Sucessora", fields: [sucessoraId], references: [id], onDelete: Cascade)
+
+  /// Impede o par duplicado. O ciclo (A->B->A) é barrado no código,
+  /// porque o banco não enxerga o grafo inteiro.
+  @@unique([predecessoraId, sucessoraId])
+  @@index([sucessoraId])
+}
+
+/// Versão congelada do cronograma. O desvio de prazo só existe contra uma
+/// linha de base: sem ela, remanejar a atividade apaga o atraso e o SPI
+/// fica eternamente em 1,00.
+model CronogramaBaseline {
+  id          String   @id @default(cuid())
+  obraId      String
+  numero      Int
+  nome        String // "Contratual", "Revisão 2 — aditivo de chuva"
+  observacao  String?
+  /// Só uma baseline por obra fica ativa; é contra ela que o Gantt e o
+  /// EVM comparam.
+  ativa       Boolean  @default(false)
+  criadoPorId String
+  criadoEm    DateTime @default(now())
+
+  obra      Obra           @relation(fields: [obraId], references: [id], onDelete: Cascade)
+  criadoPor User           @relation(fields: [criadoPorId], references: [id])
+  itens     BaselineItem[]
+
+  @@unique([obraId, numero])
+  @@index([obraId, ativa])
+}
+
+/// Foto de uma etapa no momento em que a baseline foi criada. Guarda
+/// valor e datas porque aditivo muda os dois.
+model BaselineItem {
+  id             String   @id @default(cuid())
+  baselineId     String
+  etapaId        String
+  inicioPrevisto DateTime
+  fimPrevisto    DateTime
+  valorOrcado    Decimal  @db.Decimal(14, 2)
+
+  baseline CronogramaBaseline @relation(fields: [baselineId], references: [id], onDelete: Cascade)
+  etapa    Etapa              @relation(fields: [etapaId], references: [id], onDelete: Cascade)
+
+  @@unique([baselineId, etapaId])
+}
+
+/// Fechamento semanal do valor agregado.
+///
+/// Os três valores vêm do que já existe:
+///   PV = soma, por etapa, de valorOrcado x % previsto na data
+///   EV = soma de valorOrcado x Etapa.percentual
+///   AC = soma das despesas da obra até a data
+///
+/// Fica gravado em vez de recalculado porque a curva S precisa do
+/// histórico real: recalcular hoje daria a curva de hoje, não a que foi
+/// vista em março.
+model IndicadorSemanal {
+  id     String   @id @default(cuid())
+  obraId String
+  /// Segunda-feira da semana fechada.
+  semana DateTime @db.Date
+
+  valorPlanejado Decimal @db.Decimal(14, 2) // PV / BCWS
+  valorAgregado  Decimal @db.Decimal(14, 2) // EV / BCWP
+  custoReal      Decimal @db.Decimal(14, 2) // AC / ACWP
+  /// Orçamento no término — soma do valorOrcado das etapas folha.
+  orcamentoTotal Decimal @db.Decimal(14, 2) // BAC
+
+  /// Derivados, gravados para não recalcular na leitura. Nulos quando o
+  /// divisor é zero (início de obra, antes da primeira despesa).
+  cpi               Decimal? @db.Decimal(6, 3)
+  spi               Decimal? @db.Decimal(6, 3)
+  estimativaTermino Decimal? @db.Decimal(14, 2) // EAC
+
+  /// Avanço físico global na data, para a curva de avanço.
+  avancoFisicoPct Decimal  @db.Decimal(5, 2)
+  fechadoEm       DateTime @default(now())
+
+  obra Obra @relation(fields: [obraId], references: [id], onDelete: Cascade)
+
+  @@unique([obraId, semana])
+  @@index([obraId, semana])
+}
+
+model Risco {
+  id        String         @id @default(cuid())
+  obraId    String
+  /// O risco pode ser da obra inteira ou de uma etapa.
+  etapaId   String?
+  codigo    String // R01, R02... único por obra
+  descricao String
+  categoria CategoriaRisco
+  situacao  SituacaoRisco  @default(IDENTIFICADO)
+
+  /// 1 a 5 em cada eixo. O produto (1 a 25) posiciona na matriz.
+  probabilidade Int
+  impacto       Int
+
+  /// Impacto estimado, para somar na reserva de contingência.
+  impactoFinanceiro Decimal? @db.Decimal(14, 2)
+  impactoPrazoDias  Int?
+
+  planoMitigacao String?
+  responsavelId  String?
+  prazoMitigacao DateTime?
+
+  /// true quando o nível é mantido por regra automática (chuva prevista,
+  /// CPI abaixo do limite, etapa crítica atrasada). Edição manual
+  /// desliga a regra: a pessoa tem a palavra final.
+  automatico  Boolean @default(false)
+  origemRegra String?
+
+  criadoPorId  String
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  obra        Obra             @relation(fields: [obraId], references: [id], onDelete: Cascade)
+  etapa       Etapa?           @relation(fields: [etapaId], references: [id], onDelete: SetNull)
+  responsavel User?            @relation("ResponsavelRisco", fields: [responsavelId], references: [id])
+  criadoPor   User             @relation("CriadorRisco", fields: [criadoPorId], references: [id])
+  historico   RiscoHistorico[]
+
+  @@unique([obraId, codigo])
+  @@index([obraId, situacao])
+}
+
+/// Toda mudança de nível fica registrada: é o que sustenta a conversa
+/// "esse risco já estava mapeado em março" com o cliente.
+model RiscoHistorico {
+  id            String        @id @default(cuid())
+  riscoId       String
+  probabilidade Int
+  impacto       Int
+  situacao      SituacaoRisco
+  nota          String?
+  alteradoPorId String?
+  criadoEm      DateTime      @default(now())
+
+  risco       Risco @relation(fields: [riscoId], references: [id], onDelete: Cascade)
+  alteradoPor User? @relation(fields: [alteradoPorId], references: [id])
+
+  @@index([riscoId, criadoEm])
 }

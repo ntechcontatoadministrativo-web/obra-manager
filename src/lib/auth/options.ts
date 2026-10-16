@@ -3,8 +3,9 @@
  * Segurança:
  *  - bcrypt (custo 12) para senha
  *  - bloqueio temporário após 5 tentativas erradas
- *  - 2FA TOTP: exigido quando o usuário ativou; Super Admin é obrigado a configurar
- *    (flag `precisa2fa` no token faz o middleware redirecionar para /perfil/2fa)
+ *  - 2FA TOTP: OPCIONAL. Quem ativa passa a ter o código exigido no login;
+ *    quem não ativa entra só com e-mail e senha. Não há mais trava obrigando
+ *    o Super Admin a configurar antes de usar o sistema.
  *  - mensagem de erro única (não revela se o e-mail existe)
  */
 import type { NextAuthOptions } from "next-auth";
@@ -79,7 +80,8 @@ export const authOptions: NextAuthOptions = {
           email: user.email,
           role: user.role as Role,
           empresaId: user.empresaId,
-          precisa2fa: user.role === "SUPER_ADMIN" && !user.totpAtivo,
+          // Informativo, para a tela de perfil sugerir ativar. Não bloqueia nada.
+          sugerir2fa: user.role === "SUPER_ADMIN" && !user.totpAtivo,
         };
       },
     }),
@@ -90,7 +92,7 @@ export const authOptions: NextAuthOptions = {
         token.uid = user.id;
         token.role = user.role;
         token.empresaId = user.empresaId;
-        token.precisa2fa = user.precisa2fa;
+        token.sugerir2fa = user.sugerir2fa;
       }
       return token;
     },
@@ -98,7 +100,7 @@ export const authOptions: NextAuthOptions = {
       session.user.id = token.uid;
       session.user.role = token.role;
       session.user.empresaId = token.empresaId;
-      session.user.precisa2fa = token.precisa2fa;
+      session.user.sugerir2fa = token.sugerir2fa;
       return session;
     },
   },

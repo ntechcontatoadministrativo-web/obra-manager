@@ -9,7 +9,8 @@ export type Role = "SUPER_ADMIN" | "ADMIN_OBRA" | "ENCARREGADO" | "FISCAL" | "VI
 export type Recurso =
   | "obra" | "usuario" | "funcionario" | "ponto" | "diario" | "etapa" | "medicao"
   | "compra" | "financeiro" | "ocorrencia" | "foto" | "documento" | "equipamento"
-  | "seguranca" | "contrato" | "fornecedor" | "relatorio" | "configuracao" | "auditoria";
+  | "seguranca" | "contrato" | "fornecedor" | "relatorio" | "configuracao" | "auditoria"
+  | "analise" | "risco";
 
 export type Acao = "ver" | "criar" | "editar" | "excluir" | "aprovar" | "exportar";
 
@@ -22,7 +23,8 @@ type Matriz = Partial<Record<Recurso, Acao[]>>;
 
 const SUPER_ADMIN: Matriz = Object.fromEntries(
   (["obra","usuario","funcionario","ponto","diario","etapa","medicao","compra","financeiro","ocorrencia",
-    "foto","documento","equipamento","seguranca","contrato","fornecedor","relatorio","configuracao","auditoria"] as Recurso[])
+    "foto","documento","equipamento","seguranca","contrato","fornecedor","relatorio","configuracao","auditoria",
+    "analise","risco"] as Recurso[])
     .map((r) => [r, TODAS]),
 );
 
@@ -45,6 +47,9 @@ const ADMIN_OBRA: Matriz = {
   contrato: ["ver", "criar", "editar"],
   fornecedor: VER,
   relatorio: ["ver", "exportar"],
+  // Analisa e congela baseline; cadastra e trata risco.
+  analise: ["ver", "criar", "editar", "exportar"],
+  risco: TODAS,
 };
 
 const ENCARREGADO: Matriz = {
@@ -59,6 +64,7 @@ const ENCARREGADO: Matriz = {
   documento: VER,
   equipamento: VER,
   seguranca: VER,
+  risco: VER_CRIAR,
 };
 
 const FISCAL: Matriz = {
@@ -71,6 +77,8 @@ const FISCAL: Matriz = {
   foto: VER_CRIAR,
   documento: VER_CRIAR, // laudos técnicos
   seguranca: VER,
+  analise: VER,
+  risco: VER_CRIAR_EDITAR, // quem está em campo é quem vê o risco primeiro
 };
 
 /** Visualizador/Cliente: dashboard resumido, fotos e progresso. Sem financeiro. */

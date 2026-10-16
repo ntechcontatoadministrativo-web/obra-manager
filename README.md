@@ -14,7 +14,7 @@ Logins de demo (senha `Demo@12345`): dono@, engenheiro@, encarregado@, fiscal@, 
 | Peça | Arquivo |
 |---|---|
 | Schema completo (13 módulos) | `prisma/schema.prisma` |
-| Login (bcrypt, bloqueio, 2FA TOTP) | `src/lib/auth/options.ts` |
+| Login (bcrypt, bloqueio, 2FA TOTP opcional) | `src/lib/auth/options.ts` |
 | Matriz de permissões (5 perfis) | `src/lib/auth/permissions.ts` |
 | Acesso por obra (anti-IDOR) | `src/lib/auth/guard.ts` |
 | Criptografia CPF/banco (AES-256-GCM) | `src/lib/crypto.ts` |
@@ -33,7 +33,7 @@ Obras (CRUD + painel) → Usuários → Ponto (PWA + câmera + GPS) → Diário 
 
 
 ## Fase 2 (telas)
-- `/login` (com etapa do código 2FA), menu lateral (desktop) e barra inferior (celular), tema claro/escuro
+- `/login` (com etapa do código 2FA, quando a conta tiver ativado), menu lateral (desktop) e barra inferior (celular), tema claro/escuro
 - `/dashboard`: resumo e cartões de cada obra (avanço físico, custo, semáforo do prazo)
 - `/obras`, `/obras/nova` (só o dono), `/obras/[id]` (painel, etapas, mapa, equipe, mudança de situação)
 - `/perfil` e `/perfil/2fa` (QR code para o aplicativo autenticador)
@@ -129,8 +129,12 @@ DATABASE_URL="<direta do Neon>" ENCRYPTION_KEY=... HASH_KEY=... \
 npm run db:bootstrap
 ```
 
-No primeiro login o sistema exige a configuração do 2FA antes de liberar
-qualquer tela — tenha o aplicativo autenticador em mãos.
+Entre com esse e-mail e senha. A verificação em duas etapas é **opcional**:
+fica em Perfil → Verificação em duas etapas. Quem ativa passa a ter o código
+pedido no login; quem não ativa entra só com e-mail e senha.
+
+> Com dados reais de trabalhador no banco (CPF, foto de rosto, GPS), ative o
+> 2FA pelo menos na conta do dono, que enxerga todas as obras.
 
 ## Limites conhecidos
 
