@@ -8,7 +8,7 @@ import { encerrarRisco, recalcularAutomaticos, salvarRisco } from "./actions";
 
 export type RiscoLinha = {
   id: string; codigo: string; descricao: string;
-  categoria: string; situacao: string;
+  categoria: string; situacao: "IDENTIFICADO" | "EM_MITIGACAO" | "MATERIALIZADO" | "ENCERRADO";
   probabilidade: number; impacto: number;
   automatico: boolean; planoMitigacao: string | null;
   etapaNome: string | null;
