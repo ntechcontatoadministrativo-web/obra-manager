@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
-import { can } from "@/lib/auth/permissions";
+import { acessaTodasAsObras, can } from "@/lib/auth/permissions";
 import { perfilNaObra } from "@/lib/auth/guard";
 import { carregarEvm, carregarRede } from "@/lib/analise";
 import { atrasoContraBaseline } from "@/lib/cronograma";
@@ -26,7 +26,7 @@ export default async function ComparativoPage({ searchParams }: { searchParams: 
   const todas = await prisma.obra.findMany({
     where: {
       empresaId: user.empresaId,
-      ...(user.role === "SUPER_ADMIN" ? {} : { membros: { some: { userId: user.id } } }),
+      ...(acessaTodasAsObras(user.role) ? {} : { membros: { some: { userId: user.id } } }),
     },
     orderBy: { nome: "asc" },
     select: { id: true, nome: true, status: true, previsaoTermino: true, valorContrato: true },

@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import type { Role } from "@/lib/auth/permissions";
+import { acessaTodasAsObras, type Role } from "@/lib/auth/permissions";
 import { progressoFisico, progressoFinanceiro, semaforoCronograma } from "@/lib/progresso";
 
 type U = { id: string; role: Role; empresaId: string };
@@ -7,7 +7,7 @@ type U = { id: string; role: Role; empresaId: string };
 /** Obras que o usuário pode ver, já com os indicadores calculados. */
 export async function listarObrasComIndicadores(user: U) {
   const where =
-    user.role === "SUPER_ADMIN"
+    acessaTodasAsObras(user.role)
       ? { empresaId: user.empresaId }
       : { empresaId: user.empresaId, membros: { some: { userId: user.id } } };
 
@@ -34,7 +34,7 @@ export async function listarObrasComIndicadores(user: U) {
     return {
       id: o.id, nome: o.nome, endereco: o.endereco, status: o.status, clienteNome: o.clienteNome,
       dataInicio: o.dataInicio, previsaoTermino: o.previsaoTermino, valorContrato: Number(o.valorContrato),
-      perfil: (user.role === "SUPER_ADMIN" ? "SUPER_ADMIN" : o.membros[0]?.role ?? "VISUALIZADOR") as Role,
+      perfil: (acessaTodasAsObras(user.role) ? user.role : o.membros[0]?.role ?? "VISUALIZADOR") as Role,
       fisico,
       financeiro: progressoFinanceiro(custoPorObra.get(o.id) ?? 0, orcamento),
       semaforo: semaforoCronograma(fisico, o.dataInicio, o.previsaoTermino),

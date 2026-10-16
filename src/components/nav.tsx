@@ -14,7 +14,7 @@ const ITENS = [
 ];
 
 const ROTULO_PERFIL: Record<string, string> = {
-  SUPER_ADMIN: "Dono da empresa", ADMIN_OBRA: "Engenheiro", ENCARREGADO: "Encarregado", FISCAL: "Fiscal", VISUALIZADOR: "Cliente",
+  SUPER_ADMIN: "Dono da empresa", ADMIN_OBRA: "Engenheiro", ENCARREGADO: "Encarregado", FISCAL: "Fiscal", VISUALIZADOR: "Cliente", VISITANTE: "Visitante",
 };
 
 function alternarTema() {

@@ -2,9 +2,9 @@
  * RBAC — matriz de permissões por perfil.
  * Fonte única de verdade: toda checagem (API e UI) passa por `can()`.
  * Perfis seguem a especificação: Super Admin, Admin de Obra, Encarregado,
- * Fiscal e Visualizador/Cliente.
+ * Fiscal, Visualizador/Cliente e Visitante.
  */
-export type Role = "SUPER_ADMIN" | "ADMIN_OBRA" | "ENCARREGADO" | "FISCAL" | "VISUALIZADOR";
+export type Role = "SUPER_ADMIN" | "ADMIN_OBRA" | "ENCARREGADO" | "FISCAL" | "VISUALIZADOR" | "VISITANTE";
 
 export type Recurso =
   | "obra" | "usuario" | "funcionario" | "ponto" | "diario" | "etapa" | "medicao"
@@ -88,9 +88,17 @@ const VISUALIZADOR: Matriz = {
   foto: VER,
 };
 
+/** Visitante: todas as permissões, como o Super Admin. */
+const VISITANTE: Matriz = SUPER_ADMIN;
+
 const MATRIZ: Record<Role, Matriz> = {
-  SUPER_ADMIN, ADMIN_OBRA, ENCARREGADO, FISCAL, VISUALIZADOR,
+  SUPER_ADMIN, ADMIN_OBRA, ENCARREGADO, FISCAL, VISUALIZADOR, VISITANTE,
 };
+
+/** Perfis que enxergam todas as obras da empresa, sem precisar de vínculo ObraMembro. */
+export function acessaTodasAsObras(role: Role): boolean {
+  return role === "SUPER_ADMIN" || role === "VISITANTE";
+}
 
 export function can(role: Role, recurso: Recurso, acao: Acao): boolean {
   return MATRIZ[role][recurso]?.includes(acao) ?? false;
@@ -109,7 +117,7 @@ export function assertCan(role: Role, recurso: Recurso, acao: Acao): void {
 
 /** Hierarquia: quanto menor o número, maior o poder. */
 const NIVEL: Record<Role, number> = {
-  SUPER_ADMIN: 0, ADMIN_OBRA: 1, ENCARREGADO: 2, FISCAL: 2, VISUALIZADOR: 3,
+  SUPER_ADMIN: 0, ADMIN_OBRA: 1, ENCARREGADO: 2, FISCAL: 2, VISUALIZADOR: 3, VISITANTE: 0,
 };
 
 /**

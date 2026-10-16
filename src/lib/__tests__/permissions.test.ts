@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { can, podeAtribuirRole, assertCan, ForbiddenError, type Role } from "../auth/permissions";
+import { acessaTodasAsObras, can, podeAtribuirRole, assertCan, ForbiddenError, type Role } from "../auth/permissions";
 
 describe("RBAC", () => {
   it("Super Admin pode tudo", () => {
@@ -30,6 +30,17 @@ describe("RBAC", () => {
       expect(can("VISUALIZADOR", "financeiro", a)).toBe(false);
       expect(can("VISUALIZADOR", "contrato", a)).toBe(false);
     }
+  });
+
+  it("Visitante tem todas as permissões, como o Super Admin", () => {
+    for (const a of ["ver", "criar", "editar", "excluir", "aprovar", "exportar"] as const) {
+      expect(can("VISITANTE", "financeiro", a)).toBe(true);
+      expect(can("VISITANTE", "configuracao", a)).toBe(true);
+    }
+    expect(acessaTodasAsObras("VISITANTE")).toBe(true);
+    expect(acessaTodasAsObras("ADMIN_OBRA")).toBe(false);
+    expect(podeAtribuirRole("ADMIN_OBRA", "VISITANTE")).toBe(false);
+    expect(podeAtribuirRole("SUPER_ADMIN", "VISITANTE")).toBe(false);
   });
 
   it("assertCan lança ForbiddenError", () => {

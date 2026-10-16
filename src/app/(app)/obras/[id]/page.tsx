@@ -17,7 +17,7 @@ import { StatusObra } from "./status-obra";
 export const metadata: Metadata = { title: "Obra" };
 
 const ROTULO_PERFIL: Record<string, string> = {
-  SUPER_ADMIN: "Dono", ADMIN_OBRA: "Engenheiro", ENCARREGADO: "Encarregado", FISCAL: "Fiscal", VISUALIZADOR: "Cliente",
+  SUPER_ADMIN: "Dono", ADMIN_OBRA: "Engenheiro", ENCARREGADO: "Encarregado", FISCAL: "Fiscal", VISUALIZADOR: "Cliente", VISITANTE: "Visitante",
 };
 const TOM = { verde: "ok", amarelo: "alerta", vermelho: "perigo" } as const;
 const TXT = { verde: "No prazo", amarelo: "Atenção ao prazo", vermelho: "Atrasada" } as const;

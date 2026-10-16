@@ -15,7 +15,7 @@ import { authenticator } from "otplib";
 import { prisma } from "@/lib/prisma";
 import { descriptografar } from "@/lib/crypto";
 import { registrarAuditoria } from "@/lib/audit";
-import type { Role } from "./permissions";
+import { acessaTodasAsObras, type Role } from "./permissions";
 
 const MAX_TENTATIVAS = 5;
 const BLOQUEIO_MIN = 15;
@@ -81,7 +81,7 @@ export const authOptions: NextAuthOptions = {
           role: user.role as Role,
           empresaId: user.empresaId,
           // Informativo, para a tela de perfil sugerir ativar. Não bloqueia nada.
-          sugerir2fa: user.role === "SUPER_ADMIN" && !user.totpAtivo,
+          sugerir2fa: acessaTodasAsObras(user.role as Role) && !user.totpAtivo,
         };
       },
     }),

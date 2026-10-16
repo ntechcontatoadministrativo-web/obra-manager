@@ -26,6 +26,7 @@ enum Role {
   ENCARREGADO
   FISCAL
   VISUALIZADOR
+  VISITANTE
 }
 
 enum ObraStatus {
