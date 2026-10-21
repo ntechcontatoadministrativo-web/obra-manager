@@ -15,5 +15,5 @@ export const config = {
   // Atenção: o manifesto gerado por app/manifest.ts é servido em
   // /manifest.webmanifest (não .json). Se ele cair no matcher, o navegador
   // recebe o redirecionamento de login e o PWA não oferece a instalação.
-  matcher: ["/((?!login|galeria-publica|api/auth|_next|favicon.ico|manifest.webmanifest|icons).*)"],
+  matcher: ["/((?!login|apresentacao|galeria-publica|api/auth|_next|favicon.ico|manifest.webmanifest|icons).*)"],
 };

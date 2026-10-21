@@ -51,6 +51,40 @@ body { @apply bg-bg text-ink font-sans antialiased; }
   background: repeating-linear-gradient(-45deg, rgb(var(--amarelo)) 0 14px, rgb(var(--asfalto)) 14px 28px);
 }
 
+/* ---------- Abertura NTECH (components/intro-ntech.tsx) ---------- */
+#intro-ntech {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at center, #13201a 0%, #0B0F0E 70%);
+  cursor: pointer; overflow: hidden;
+  animation: intro-sai 0.55s ease-in 3.3s forwards;
+}
+#intro-ntech.intro-saindo { animation: intro-sai 0.3s ease-in forwards; }
+.sem-intro #intro-ntech { display: none; }
+.intro-grade {
+  position: absolute; inset: -50%;
+  background-image: linear-gradient(rgba(92,255,79,.07) 1px, transparent 1px), linear-gradient(90deg, rgba(92,255,79,.07) 1px, transparent 1px);
+  background-size: 48px 48px;
+  transform: perspective(600px) rotateX(55deg);
+  animation: intro-grade 4s linear forwards;
+}
+.intro-marca { animation: intro-marca 0.7s cubic-bezier(.2,1.4,.4,1) both; filter: drop-shadow(0 0 28px rgba(92,255,79,.45)); }
+.intro-nome { margin-top: 1.25rem; animation: intro-nome 0.9s ease-out 0.35s both; }
+.intro-linha { height: 2px; width: 220px; margin-top: .75rem; background: #5CFF4F; box-shadow: 0 0 12px #5CFF4F; transform-origin: center; animation: intro-linha 0.6s ease-out 0.9s both; }
+.intro-apresenta { animation: intro-sobe 0.5s ease-out 1.25s both; }
+.intro-produto { animation: intro-sobe 0.7s ease-out 1.8s both; }
+.intro-pular { animation: intro-sobe 0.4s ease-out 1s both; }
+@keyframes intro-marca { from { opacity: 0; transform: scale(.4) rotate(-12deg); } to { opacity: 1; transform: none; } }
+@keyframes intro-nome { from { opacity: 0; letter-spacing: .8em; } to { opacity: 1; letter-spacing: .18em; } }
+@keyframes intro-linha { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes intro-sobe { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes intro-grade { from { transform: perspective(600px) rotateX(55deg) translateY(0); } to { transform: perspective(600px) rotateX(55deg) translateY(96px); } }
+@keyframes intro-sai { to { opacity: 0; visibility: hidden; pointer-events: none; } }
+
+/* Troca de slide na apresentação */
+.slide-entra { animation: slide-entra 0.4s ease-out both; }
+@keyframes slide-entra { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
@@ -58,6 +92,7 @@ body { @apply bg-bg text-ink font-sans antialiased; }
 /* Impressão / PDF: sem menus, fundo branco, letras pretas */
 @media print {
   :root, .dark { --bg: 255 255 255; --card: 255 255 255; --ink: 0 0 0; --muted: 70 70 70; --line: 190 190 190; }
+  #intro-ntech { display: none; }
   body { background: #fff; }
   @page { margin: 14mm; }
 }

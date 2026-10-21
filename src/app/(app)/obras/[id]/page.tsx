@@ -10,7 +10,7 @@ import { statusEfetivo } from "@/lib/etapas";
 import { dataLocalISO, dataParaBanco } from "@/lib/ponto";
 import { brl, dataBR } from "@/lib/utils";
 import Link from "next/link";
-import { TrendingUp, Clock, GanttChart, NotebookPen, ShieldAlert } from "lucide-react";
+import { TrendingUp, Clock, GanttChart, NotebookPen, ShieldAlert, FileSpreadsheet, ChevronRight } from "lucide-react";
 import { Badge, Card, Progresso, TITULO } from "@/components/ui";
 import { StatusObra } from "./status-obra";
 
@@ -51,6 +51,14 @@ export default async function ObraPage({ params }: { params: { id: string } }) {
   const financeiro = progressoFinanceiro(custo, orcamento);
   const semaforo = semaforoCronograma(fisico, obra.dataInicio, obra.previsaoTermino);
   const st = STATUS_OBRA[obra.status];
+  const modulos = ([
+    { href: "ponto", rotulo: "Ponto", dica: "Foto e GPS", icone: Clock, recurso: "ponto" },
+    { href: "diario", rotulo: "Diário", dica: "Registro do dia", icone: NotebookPen, recurso: "diario" },
+    { href: "etapas", rotulo: "Etapas", dica: "Cronograma e Gantt", icone: GanttChart, recurso: "etapa" },
+    { href: "medicoes", rotulo: "Medições", dica: "Boletins", icone: FileSpreadsheet, recurso: "medicao" },
+    { href: "analise", rotulo: "Análise", dica: "Custo e prazo", icone: TrendingUp, recurso: "analise" },
+    { href: "riscos", rotulo: "Riscos", dica: "Matriz 5×5", icone: ShieldAlert, recurso: "risco" },
+  ] as const).filter((m) => can(perfil, m.recurso, "ver"));
   const mapa = obra.latitude != null && obra.longitude != null
     ? `https://www.openstreetmap.org/export/embed.html?bbox=${obra.longitude - 0.004}%2C${obra.latitude - 0.003}%2C${obra.longitude + 0.004}%2C${obra.latitude + 0.003}&layer=mapnik&marker=${obra.latitude}%2C${obra.longitude}`
     : null;
@@ -64,43 +72,23 @@ export default async function ObraPage({ params }: { params: { id: string } }) {
           <Badge tom={TOM[semaforo]}>{TXT[semaforo]}</Badge>
         </div>
         <p className="text-muted">{obra.endereco}</p>
-        {can(perfil, "ponto", "ver") && (
-          <div>
-            <Link href={`/obras/${obra.id}/ponto`} className="inline-flex min-h-11 items-center gap-2 rounded border border-line bg-card px-4 text-sm font-semibold hover:border-laranja">
-              <Clock size={18} aria-hidden /> Controle de ponto
-            </Link>
-          </div>
-        )}
-        {can(perfil, "etapa", "ver") && (
-          <div>
-            <Link href={`/obras/${obra.id}/etapas`} className="inline-flex min-h-11 items-center gap-2 rounded border border-line bg-card px-4 text-sm font-semibold hover:border-laranja">
-              <GanttChart size={18} aria-hidden /> Etapas e cronograma
-            </Link>
-          </div>
-        )}
-        {can(perfil, "diario", "ver") && (
-          <div>
-            <Link href={`/obras/${obra.id}/diario`} className="inline-flex min-h-11 items-center gap-2 rounded border border-line bg-card px-4 text-sm font-semibold hover:border-laranja">
-              <NotebookPen size={18} aria-hidden /> Diário de obra
-            </Link>
-          </div>
-        )}
-        {can(perfil, "analise", "ver") && (
-          <div>
-            <Link href={`/obras/${obra.id}/analise`} className="inline-flex min-h-11 items-center gap-2 rounded border border-line bg-card px-4 text-sm font-semibold hover:border-laranja">
-              <TrendingUp size={18} aria-hidden /> Análise do projeto
-            </Link>
-          </div>
-        )}
-        {can(perfil, "risco", "ver") && (
-          <div>
-            <Link href={`/obras/${obra.id}/riscos`} className="inline-flex min-h-11 items-center gap-2 rounded border border-line bg-card px-4 text-sm font-semibold hover:border-laranja">
-              <ShieldAlert size={18} aria-hidden /> Riscos
-            </Link>
-          </div>
-        )}
         {can(perfil, "obra", "editar") && <StatusObra obraId={obra.id} atual={obra.status} podeArquivar={can(perfil, "obra", "excluir")} />}
       </header>
+
+      {modulos.length > 0 && (
+        <nav aria-label="Módulos da obra" className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          {modulos.map(({ href, rotulo, dica, icone: Icone }) => (
+            <Link key={href} href={`/obras/${obra.id}/${href}`}
+              className="group flex min-h-24 flex-col justify-between rounded-md border border-line bg-card p-4 transition hover:-translate-y-0.5 hover:border-laranja hover:shadow-md">
+              <Icone size={22} className="text-laranja" aria-hidden />
+              <span>
+                <span className="flex items-center justify-between font-semibold">{rotulo}<ChevronRight size={16} className="text-muted transition group-hover:translate-x-0.5 group-hover:text-laranja" aria-hidden /></span>
+                <span className="block text-xs text-muted">{dica}</span>
+              </span>
+            </Link>
+          ))}
+        </nav>
+      )}
 
       <section className="grid gap-4 md:grid-cols-2" aria-label="Progresso">
         <Card className="space-y-5 p-5">
@@ -125,7 +113,7 @@ export default async function ObraPage({ params }: { params: { id: string } }) {
       <section>
         <h2 className="mb-3 font-display text-xl font-semibold">Etapas</h2>
         {etapas.length === 0 ? (
-          <Card className="p-5 text-sm text-muted">Nenhuma etapa cadastrada ainda. O cronograma será o próximo módulo.</Card>
+          <Card className="p-5 text-sm text-muted">Nenhuma etapa cadastrada ainda. Cadastre, importe do MS Project/Primavera ou use o modelo de etapas típicas em Etapas.</Card>
         ) : (
           <Card className="divide-y divide-line">
             {etapas.map((e) => (

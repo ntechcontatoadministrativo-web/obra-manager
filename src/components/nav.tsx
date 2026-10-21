@@ -2,8 +2,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { HardHat, LayoutDashboard, Scale, UserCircle, LogOut, Moon, Sun } from "lucide-react";
+import { HardHat, LayoutDashboard, Scale, UserCircle, LogOut, Moon, Sun, Presentation } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { AssinaturaNtech } from "./ntech";
 
 // Novos módulos entram aqui conforme forem construídos.
 const ITENS = [
@@ -30,8 +31,10 @@ export function Nav({ nome, role }: { nome: string; role: string }) {
     <>
       {/* Desktop: menu lateral */}
       <aside className="sticky top-0 hidden h-screen flex-col bg-asfalto text-white md:flex print:!hidden">
-        <div className="px-5 pb-4 pt-6">
+        <div className="faixa-obra h-1.5" aria-hidden />
+        <div className="px-5 pb-4 pt-5">
           <p className="font-display text-xl font-semibold">Obra Manager</p>
+          <AssinaturaNtech className="mt-1 text-white" />
         </div>
         <nav className="flex-1 space-y-1 px-3" aria-label="Principal">
           {ITENS.map(({ href, rotulo, icone: Icone }) => (
@@ -42,6 +45,11 @@ export function Nav({ nome, role }: { nome: string; role: string }) {
             </Link>
           ))}
         </nav>
+        <div className="px-3 pb-3">
+          <Link href="/apresentacao" target="_blank" className="flex min-h-11 items-center gap-3 rounded px-3 text-sm font-medium text-white/70 hover:bg-white/5 hover:text-white">
+            <Presentation size={18} aria-hidden /> Apresentação
+          </Link>
+        </div>
         <div className="border-t border-white/10 p-4">
           <p className="truncate text-sm font-medium">{nome}</p>
           <p className="mb-3 text-xs text-white/60">{ROTULO_PERFIL[role] ?? role}</p>
