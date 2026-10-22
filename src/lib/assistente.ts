@@ -145,6 +145,47 @@ async function chamarModelo(fatos: string, historico: Mensagem[], pergunta: stri
   }
 }
 
+/**
+ * Foto de boleto, nota ou recibo → texto, para a leitura de contas a pagar.
+ * Só transcreve: quem interpreta é documento.ts, que confere linha
+ * digitável e PIX pelos dígitos verificadores. Precisa de um modelo que
+ * aceite imagem (o padrão aceita). Sem chave, devolve null.
+ */
+export async function transcreverImagem(dataUrl: string): Promise<string | null> {
+  const chave = process.env.ASSISTENTE_API_KEY;
+  if (!chave) return null;
+  const url = process.env.ASSISTENTE_URL ?? "https://api.openai.com/v1/chat/completions";
+  const modelo = process.env.ASSISTENTE_MODELO ?? "gpt-4o-mini";
+
+  const controle = new AbortController();
+  const limite = setTimeout(() => controle.abort(), 45_000);
+  try {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${chave}` },
+      body: JSON.stringify({
+        model: modelo, temperature: 0, max_tokens: 900,
+        messages: [{
+          role: "user",
+          content: [
+            { type: "text", text: "Transcreva deste documento de cobrança, uma informação por linha e com o rótulo como aparece: beneficiário/razão social, CNPJ, vencimento, valor total a pagar, linha digitável do boleto (todos os dígitos) e o código PIX copia e cola, se houver. Não invente nada que não esteja legível." },
+            { type: "image_url", image_url: { url: dataUrl } },
+          ],
+        }],
+      }),
+      signal: controle.signal,
+    });
+    if (!r.ok) return null;
+    const dados = await r.json();
+    const texto = dados?.choices?.[0]?.message?.content;
+    return typeof texto === "string" && texto.trim() ? texto : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(limite);
+  }
+}
+
 export async function perguntar(
   fatos: FatosDoProjeto,
   historico: Mensagem[],

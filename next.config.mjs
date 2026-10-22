@@ -12,8 +12,8 @@ const nextConfig = {
         { key: "X-Frame-Options", value: "DENY" },
         { key: "X-Content-Type-Options", value: "nosniff" },
         { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-        // Câmera e GPS serão usados no módulo de Ponto (mesma origem).
-        { key: "Permissions-Policy", value: "camera=(self), geolocation=(self)" },
+        // Câmera e GPS: módulo de Ponto. Microfone: comando de voz.
+        { key: "Permissions-Policy", value: "camera=(self), geolocation=(self), microphone=(self)" },
       ],
     }];
   },

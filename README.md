@@ -8,7 +8,7 @@ npm run db:seed               # dados de demonstração
 npm test                      # testes unitários
 npm run dev                   # http://localhost:3000
 ```
-Logins de demo (senha `Demo@12345`): dono@, engenheiro@, encarregado@, fiscal@, cliente@ `demo.com`.
+Logins de demo (senha `Demo@12345`): dono@, engenheiro@, encarregado@, fiscal@, cliente@, compras@ `demo.com`.
 
 ## O que já existe
 | Peça | Arquivo |
@@ -64,6 +64,36 @@ Para ver: `npm install` e `npm run dev`, abrir http://localhost:3000.
 - "Criar etapas típicas de obra": modelo de 11 etapas distribuído pelo prazo da obra
 - `/obras/[id]/medicoes`: fechar medição do período (andamento atual − medição anterior) e boletim para imprimir ou salvar em PDF
 - **Sem mudança no banco.**
+
+## Fase 4 — Compras, pagamentos, voz e RDO
+
+**Precisa de migração:** `20261021200000_compras_pagamentos` (chave PIX no fornecedor;
+vencimento, favorecido e PIX na despesa). Rode `npm run db:deploy` antes de subir o código.
+
+- `/obras/[id]/compras`: solicitação (encarregado) → aprovação (engenheiro; acima do
+  limite da empresa, o dono) → ordem de compra com fornecedor e prazo de pagamento →
+  enviada → entregue. Na entrega nasce a conta a pagar, com o PIX do fornecedor.
+  Preço acima da média histórica do material aparece como alerta.
+- `/pagamentos`: todas as obras com o que falta pagar, o vencido e o próximo vencimento;
+  lista das contas com "Copiar PIX", QR code e "Marcar como paga". Cada conta é uma
+  `Despesa` (`pagamento` nulo = em aberto), então entra no custo real da análise.
+- Conta nova à mão ou **lida de documento**: PDF (texto extraído no servidor com `unpdf`),
+  foto (QR do PIX e código de barras pelo leitor do celular; o resto pelo assistente, se
+  `ASSISTENTE_API_KEY` estiver configurada) ou texto colado. PIX e linha digitável são
+  conferidos pelos dígitos verificadores; a pessoa confere tudo antes de salvar.
+- PIX: usa o "copia e cola" do documento ou gera um a partir da chave, já com o valor.
+- `/fornecedores`: cadastro com chave PIX.
+- **Perfil Comprador** (`compras@demo.com` no seed): setor de compras, em todas as obras.
+  Abre pedido, emite e envia a ordem de compra, cadastra fornecedor e registra a entrega;
+  não aprova e não vê o financeiro. Só o dono cria um Comprador. `/compras` reúne os
+  pedidos em aberto de todas as obras (esperando ordem, a caminho, aguardando aprovação).
+- **Comando de voz** (botão do microfone em todas as telas): "o que falta pagar",
+  "pix do primeiro", "compras para aprovar", "abrir diário da obra X". O navegador faz
+  a fala → texto; a interpretação é por regras (`src/lib/voz.ts`), sem IA.
+  Funciona no Chrome/Edge e no Safari do iPhone; no Firefox, digite o comando.
+- **RDO em PDF**: `/obras/[id]/diario/AAAA-MM-DD/rdo` — folha A4 no formato de papel
+  (cabeçalho, clima por turno, mão de obra, equipamentos, serviços, fotos, assinaturas).
+  `?branco=1` gera o modelo vazio para preencher à mão.
 
 ---
 

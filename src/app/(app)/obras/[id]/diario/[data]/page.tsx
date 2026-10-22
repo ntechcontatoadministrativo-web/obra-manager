@@ -72,7 +72,7 @@ export default async function DiarioDia({ params, searchParams }: { params: { id
             {TURNOS.map((t) => <Link key={t} href={`/obras/${params.id}/diario/${params.data}?turno=${t}`} aria-current={t === turno ? "page" : undefined}
               className={`min-h-9 rounded border px-3 py-1.5 text-xs font-semibold ${t === turno ? "border-laranja bg-laranja/10 text-laranja" : "border-line text-muted hover:text-ink"}`}>{ROTULO_TURNO[t]}</Link>)}
           </nav>
-          {diario && <Link href={`/obras/${params.id}/diario/relatorio?de=${params.data}&ate=${params.data}&fotos=sim`} className="ml-auto inline-flex min-h-11 items-center gap-2 text-sm font-medium text-laranja hover:underline print:hidden"><Printer size={16} aria-hidden /> Relatório / PDF</Link>}
+          <Link href={`/obras/${params.id}/diario/${params.data}/rdo`} className="ml-auto inline-flex min-h-11 items-center gap-2 text-sm font-medium text-laranja hover:underline print:hidden"><Printer size={16} aria-hidden /> RDO em PDF</Link>
         </div>
       </header>
 

@@ -10,14 +10,14 @@ import { statusEfetivo } from "@/lib/etapas";
 import { dataLocalISO, dataParaBanco } from "@/lib/ponto";
 import { brl, dataBR } from "@/lib/utils";
 import Link from "next/link";
-import { TrendingUp, Clock, GanttChart, NotebookPen, ShieldAlert, FileSpreadsheet, ChevronRight } from "lucide-react";
+import { TrendingUp, Clock, GanttChart, NotebookPen, ShieldAlert, FileSpreadsheet, ChevronRight, ShoppingCart, Wallet } from "lucide-react";
 import { Badge, Card, Progresso, TITULO } from "@/components/ui";
 import { StatusObra } from "./status-obra";
 
 export const metadata: Metadata = { title: "Obra" };
 
 const ROTULO_PERFIL: Record<string, string> = {
-  SUPER_ADMIN: "Dono", ADMIN_OBRA: "Engenheiro", ENCARREGADO: "Encarregado", FISCAL: "Fiscal", VISUALIZADOR: "Cliente", VISITANTE: "Visitante",
+  SUPER_ADMIN: "Dono", ADMIN_OBRA: "Engenheiro", ENCARREGADO: "Encarregado", FISCAL: "Fiscal", VISUALIZADOR: "Cliente", VISITANTE: "Visitante", COMPRADOR: "Comprador",
 };
 const TOM = { verde: "ok", amarelo: "alerta", vermelho: "perigo" } as const;
 const TXT = { verde: "No prazo", amarelo: "Atenção ao prazo", vermelho: "Atrasada" } as const;
@@ -58,6 +58,8 @@ export default async function ObraPage({ params }: { params: { id: string } }) {
     { href: "medicoes", rotulo: "Medições", dica: "Boletins", icone: FileSpreadsheet, recurso: "medicao" },
     { href: "analise", rotulo: "Análise", dica: "Custo e prazo", icone: TrendingUp, recurso: "analise" },
     { href: "riscos", rotulo: "Riscos", dica: "Matriz 5×5", icone: ShieldAlert, recurso: "risco" },
+    { href: "compras", rotulo: "Compras", dica: "Pedidos e entregas", icone: ShoppingCart, recurso: "compra" },
+    { href: `/pagamentos?obra=${params.id}`, rotulo: "Pagamentos", dica: "Contas e PIX", icone: Wallet, recurso: "financeiro" },
   ] as const).filter((m) => can(perfil, m.recurso, "ver"));
   const mapa = obra.latitude != null && obra.longitude != null
     ? `https://www.openstreetmap.org/export/embed.html?bbox=${obra.longitude - 0.004}%2C${obra.latitude - 0.003}%2C${obra.longitude + 0.004}%2C${obra.latitude + 0.003}&layer=mapnik&marker=${obra.latitude}%2C${obra.longitude}`
@@ -76,9 +78,9 @@ export default async function ObraPage({ params }: { params: { id: string } }) {
       </header>
 
       {modulos.length > 0 && (
-        <nav aria-label="Módulos da obra" className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <nav aria-label="Módulos da obra" className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
           {modulos.map(({ href, rotulo, dica, icone: Icone }) => (
-            <Link key={href} href={`/obras/${obra.id}/${href}`}
+            <Link key={href} href={href.startsWith("/") ? href : `/obras/${obra.id}/${href}`}
               className="group flex min-h-24 flex-col justify-between rounded-md border border-line bg-card p-4 transition hover:-translate-y-0.5 hover:border-laranja hover:shadow-md">
               <Icone size={22} className="text-laranja" aria-hidden />
               <span>

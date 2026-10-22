@@ -2,9 +2,9 @@
  * RBAC — matriz de permissões por perfil.
  * Fonte única de verdade: toda checagem (API e UI) passa por `can()`.
  * Perfis seguem a especificação: Super Admin, Admin de Obra, Encarregado,
- * Fiscal, Visualizador/Cliente e Visitante.
+ * Fiscal, Visualizador/Cliente, Visitante e Comprador.
  */
-export type Role = "SUPER_ADMIN" | "ADMIN_OBRA" | "ENCARREGADO" | "FISCAL" | "VISUALIZADOR" | "VISITANTE";
+export type Role = "SUPER_ADMIN" | "ADMIN_OBRA" | "ENCARREGADO" | "FISCAL" | "VISUALIZADOR" | "VISITANTE" | "COMPRADOR";
 
 export type Recurso =
   | "obra" | "usuario" | "funcionario" | "ponto" | "diario" | "etapa" | "medicao"
@@ -45,7 +45,8 @@ const ADMIN_OBRA: Matriz = {
   equipamento: TODAS,
   seguranca: TODAS,
   contrato: ["ver", "criar", "editar"],
-  fornecedor: VER,
+  // Cadastra o fornecedor ao emitir a ordem de compra; excluir fica com o dono.
+  fornecedor: ["ver", "criar", "editar"],
   relatorio: ["ver", "exportar"],
   // Analisa e congela baseline; cadastra e trata risco.
   analise: ["ver", "criar", "editar", "exportar"],
@@ -88,16 +89,31 @@ const VISUALIZADOR: Matriz = {
   foto: VER,
 };
 
+/**
+ * Comprador: o setor de compras da empresa, em todas as obras. Abre pedido,
+ * emite a ordem de compra, cadastra fornecedor e registra a entrega.
+ * Não aprova (quem aprova é engenheiro ou dono) e não vê o financeiro.
+ */
+const COMPRADOR: Matriz = {
+  obra: VER,
+  etapa: VER, // centro de custo da compra
+  compra: VER_CRIAR_EDITAR,
+  fornecedor: VER_CRIAR_EDITAR,
+};
+
 /** Visitante: todas as permissões, como o Super Admin. */
 const VISITANTE: Matriz = SUPER_ADMIN;
 
 const MATRIZ: Record<Role, Matriz> = {
-  SUPER_ADMIN, ADMIN_OBRA, ENCARREGADO, FISCAL, VISUALIZADOR, VISITANTE,
+  SUPER_ADMIN, ADMIN_OBRA, ENCARREGADO, FISCAL, VISUALIZADOR, VISITANTE, COMPRADOR,
 };
 
-/** Perfis que enxergam todas as obras da empresa, sem precisar de vínculo ObraMembro. */
+/**
+ * Perfis que enxergam todas as obras da empresa, sem precisar de vínculo ObraMembro.
+ * O Comprador entra aqui porque compra para todas; o que ele vê em cada obra continua limitado pela matriz.
+ */
 export function acessaTodasAsObras(role: Role): boolean {
-  return role === "SUPER_ADMIN" || role === "VISITANTE";
+  return role === "SUPER_ADMIN" || role === "VISITANTE" || role === "COMPRADOR";
 }
 
 export function can(role: Role, recurso: Recurso, acao: Acao): boolean {
@@ -117,7 +133,7 @@ export function assertCan(role: Role, recurso: Recurso, acao: Acao): void {
 
 /** Hierarquia: quanto menor o número, maior o poder. */
 const NIVEL: Record<Role, number> = {
-  SUPER_ADMIN: 0, ADMIN_OBRA: 1, ENCARREGADO: 2, FISCAL: 2, VISUALIZADOR: 3, VISITANTE: 0,
+  SUPER_ADMIN: 0, ADMIN_OBRA: 1, ENCARREGADO: 2, FISCAL: 2, VISUALIZADOR: 3, VISITANTE: 0, COMPRADOR: 2,
 };
 
 /**
@@ -129,5 +145,7 @@ const NIVEL: Record<Role, number> = {
 export function podeAtribuirRole(criador: Role, alvo: Role): boolean {
   if (!can(criador, "usuario", "criar")) return false;
   if (alvo === "SUPER_ADMIN") return false;
+  // Comprador enxerga todas as obras: um Admin de Obra não pode dar acesso além das suas.
+  if (alvo === "COMPRADOR" && criador !== "SUPER_ADMIN") return false;
   return NIVEL[alvo] > NIVEL[criador];
 }

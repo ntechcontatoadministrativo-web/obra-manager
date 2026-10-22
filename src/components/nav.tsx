@@ -2,20 +2,25 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { HardHat, LayoutDashboard, Scale, UserCircle, LogOut, Moon, Sun, Presentation } from "lucide-react";
+import { HardHat, LayoutDashboard, Scale, UserCircle, LogOut, Moon, Sun, Presentation, Wallet, Truck, ShoppingCart } from "lucide-react";
+import { can, type Role } from "@/lib/auth/permissions";
 import { cn } from "@/lib/utils";
 import { AssinaturaNtech } from "./ntech";
 
 // Novos módulos entram aqui conforme forem construídos.
-const ITENS = [
+// `soDesktop`: fica fora da barra inferior do celular, que só comporta cinco itens.
+const TODOS = [
   { href: "/dashboard", rotulo: "Painel", icone: LayoutDashboard },
   { href: "/obras", rotulo: "Obras", icone: HardHat },
-  { href: "/comparativo", rotulo: "Comparar", icone: Scale },
+  { href: "/pagamentos", rotulo: "Pagamentos", icone: Wallet, recurso: "financeiro" },
+  { href: "/compras", rotulo: "Compras", icone: ShoppingCart, recurso: "compra" },
+  { href: "/fornecedores", rotulo: "Fornecedores", icone: Truck, recurso: "fornecedor", soDesktop: true },
+  { href: "/comparativo", rotulo: "Comparar", icone: Scale, recurso: "analise", soDesktop: true },
   { href: "/perfil", rotulo: "Perfil", icone: UserCircle },
-];
+] as const;
 
 const ROTULO_PERFIL: Record<string, string> = {
-  SUPER_ADMIN: "Dono da empresa", ADMIN_OBRA: "Engenheiro", ENCARREGADO: "Encarregado", FISCAL: "Fiscal", VISUALIZADOR: "Cliente", VISITANTE: "Visitante",
+  SUPER_ADMIN: "Dono da empresa", ADMIN_OBRA: "Engenheiro", ENCARREGADO: "Encarregado", FISCAL: "Fiscal", VISUALIZADOR: "Cliente", VISITANTE: "Visitante", COMPRADOR: "Comprador",
 };
 
 function alternarTema() {
@@ -26,6 +31,8 @@ function alternarTema() {
 export function Nav({ nome, role }: { nome: string; role: string }) {
   const path = usePathname();
   const ativo = (h: string) => path === h || path.startsWith(h + "/");
+  const ITENS = TODOS.filter((i) => !("recurso" in i) || can(role as Role, i.recurso, "ver"));
+  const MOVEL = ITENS.filter((i) => !("soDesktop" in i));
 
   return (
     <>
@@ -66,8 +73,8 @@ export function Nav({ nome, role }: { nome: string; role: string }) {
 
       {/* Celular: barra inferior */}
       <nav aria-label="Principal" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 border-t border-white/10 bg-asfalto pb-[env(safe-area-inset-bottom)] text-white md:hidden print:hidden"
-        style={{ gridTemplateColumns: `repeat(${ITENS.length}, minmax(0, 1fr))` }}>
-        {ITENS.map(({ href, rotulo, icone: Icone }) => (
+        style={{ gridTemplateColumns: `repeat(${MOVEL.length}, minmax(0, 1fr))` }}>
+        {MOVEL.map(({ href, rotulo, icone: Icone }) => (
           <Link key={href} href={href} aria-current={ativo(href) ? "page" : undefined}
             className={cn("flex min-h-14 flex-col items-center justify-center gap-0.5 border-t-4 text-xs font-medium",
               ativo(href) ? "border-amarelo text-white" : "border-transparent text-white/60")}>

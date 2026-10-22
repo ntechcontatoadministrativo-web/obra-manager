@@ -18,6 +18,21 @@ describe("RBAC", () => {
     expect(can("ENCARREGADO", "compra", "aprovar")).toBe(false);
   });
 
+  it("Comprador compra em todas as obras, mas não aprova nem vê o financeiro", () => {
+    expect(acessaTodasAsObras("COMPRADOR")).toBe(true);
+    expect(can("COMPRADOR", "compra", "criar")).toBe(true);
+    expect(can("COMPRADOR", "compra", "editar")).toBe(true);
+    expect(can("COMPRADOR", "compra", "aprovar")).toBe(false);
+    expect(can("COMPRADOR", "fornecedor", "criar")).toBe(true);
+    expect(can("COMPRADOR", "financeiro", "ver")).toBe(false);
+    expect(can("COMPRADOR", "diario", "ver")).toBe(false);
+  });
+
+  it("Só o dono cria Comprador (ele enxerga todas as obras)", () => {
+    expect(podeAtribuirRole("SUPER_ADMIN", "COMPRADOR")).toBe(true);
+    expect(podeAtribuirRole("ADMIN_OBRA", "COMPRADOR")).toBe(false);
+  });
+
   it("Fiscal vê ponto e diário sem editar, mas registra ocorrência", () => {
     expect(can("FISCAL", "ponto", "ver")).toBe(true);
     expect(can("FISCAL", "ponto", "editar")).toBe(false);

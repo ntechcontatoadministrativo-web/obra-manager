@@ -1,9 +1,9 @@
 /**
  * Seed de demonstração. Uso: npm run db:seed
- * Cria 1 empresa, 1 obra, um usuário de cada perfil, etapas, insumos,
- * fornecedor e funcionários. Senha de todos: "Demo@12345" (SÓ PARA DEMO).
+ * Cria 1 empresa, 1 obra, um usuário de cada perfil, etapas, insumos, compras,
+ * fornecedores, contas a pagar e funcionários. Senha de todos: "Demo@12345" (SÓ PARA DEMO).
  */
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, type Prisma } from "@prisma/client";
 import { hash } from "bcryptjs";
 import { criptografar, hashCpf } from "../src/lib/crypto";
 
@@ -28,6 +28,7 @@ async function main() {
   const enc = await mk("Mestre de Obras", "encarregado@demo.com", "ENCARREGADO");
   const fis = await mk("Fiscal Técnico", "fiscal@demo.com", "FISCAL");
   const cli = await mk("Cliente", "cliente@demo.com", "VISUALIZADOR");
+  await mk("Setor de Compras", "compras@demo.com", "COMPRADOR"); // vê todas as obras: não precisa de vínculo
 
   let obra = await prisma.obra.findFirst({ where: { empresaId: empresa.id, nome: "Residencial Aurora" } });
   if (!obra) {
@@ -58,14 +59,44 @@ async function main() {
     await mkEtapa("Instalações Elétricas", 4, 100, 200, 0, 150_000, "NAO_INICIADA");
 
     const forn = await prisma.fornecedor.create({
-      data: { empresaId: empresa.id, nome: "Casa do Construtor", cnpj: "11.111.111/0001-11", prazoEntregaDias: 3 },
+      data: { empresaId: empresa.id, nome: "Casa do Construtor", cnpj: "11.111.111/0001-11", prazoEntregaDias: 3, pixChave: "11111111000111" },
+    });
+    const areial = await prisma.fornecedor.create({
+      data: { empresaId: empresa.id, nome: "Areial Bom Jesus", cnpj: "22.222.222/0001-22", prazoEntregaDias: 1, pixChave: "financeiro@areialbomjesus.com.br" },
     });
     const cimento = await prisma.insumo.create({
       data: { empresaId: empresa.id, nome: "Cimento CP-II 50kg", categoria: "Aglomerantes", unidade: "saco" },
     });
+    const vergalhao = await prisma.insumo.create({
+      data: { empresaId: empresa.id, nome: "Vergalhão CA-50 10mm", categoria: "Aço", unidade: "barra" },
+    });
     await prisma.precoHistorico.createMany({
       data: [32.5, 33.9, 34.2].map((preco) => ({ insumoId: cimento.id, fornecedorId: forn.id, preco })),
     });
+
+    // Compras em fases diferentes, para a tela e o comando de voz terem o que mostrar.
+    await prisma.solicitacaoCompra.create({
+      data: {
+        obraId: obra.id, solicitanteId: enc.id, urgencia: "URGENTE", justificativa: "Concretagem da laje do 2º pavimento",
+        valorEstimado: 200 * 41.9, itens: { create: [{ insumoId: cimento.id, quantidade: 200, precoUnitEstimado: 41.9 }] },
+      },
+    });
+    const entregue = await prisma.solicitacaoCompra.create({
+      data: {
+        obraId: obra.id, solicitanteId: enc.id, justificativa: "Armação dos pilares", status: "ENTREGUE", valorEstimado: 120 * 48,
+        aprovadoAdminObraPorId: eng.id, itens: { create: [{ insumoId: vergalhao.id, quantidade: 120, precoUnitEstimado: 48 }] },
+      },
+    });
+    const oc = await prisma.ordemCompra.create({
+      data: { solicitacaoId: entregue.id, fornecedorId: forn.id, numero: `OC-${new Date().getFullYear()}-0001`, valorTotal: 5640, prazoPagamentoDias: 14, emitidaPorId: eng.id, entregueEm: dia(-3) },
+    });
+
+    // Contas a pagar: uma vencida, uma da compra acima e uma lida de documento.
+    const conta = (d: Omit<Prisma.DespesaUncheckedCreateInput, "obraId" | "criadoPorId" | "formaPagamento" | "competencia">) =>
+      prisma.despesa.create({ data: { obraId: obra!.id, criadoPorId: eng.id, formaPagamento: "A_PRAZO", competencia: dia(-5), ...d } });
+    await conta({ tipo: "MATERIAL", descricao: "20 m³ de areia média", valor: 1980, vencimento: dia(-2), favorecido: areial.nome, fornecedorId: areial.id, pixChave: areial.pixChave, origem: "MANUAL" });
+    await conta({ tipo: "MATERIAL", descricao: `${oc.numero}: 120 barra Vergalhão CA-50 10mm`, valor: 5640, vencimento: dia(11), favorecido: forn.nome, fornecedorId: forn.id, pixChave: forn.pixChave, ordemCompraId: oc.id, origem: "COMPRA" });
+    await conta({ tipo: "SERVICO", descricao: "Locação de betoneira — outubro", valor: 750, vencimento: dia(4), favorecido: "Loca Fácil Equipamentos", pixChave: "+5591988887777", origem: "DOCUMENTO", documentoNome: "boleto-locafacil.pdf" });
 
     for (const [nome, cpf, funcao] of [
       ["João Pedreiro", "529.982.247-25", "Pedreiro"],

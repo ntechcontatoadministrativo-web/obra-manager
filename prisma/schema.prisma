@@ -27,6 +27,7 @@ enum Role {
   FISCAL
   VISUALIZADOR
   VISITANTE
+  COMPRADOR
 }
 
 enum ObraStatus {
@@ -607,12 +608,15 @@ model Fornecedor {
   telefone         String?
   prazoEntregaDias Int?
   avaliacaoMedia   Decimal? @db.Decimal(3, 2)
+  /// Chave PIX (CNPJ, e-mail, telefone ou aleatória). Copiada para cada conta a pagar.
+  pixChave         String?
 
   empresa    Empresa               @relation(fields: [empresaId], references: [id])
   precos     PrecoHistorico[]
   ordens     OrdemCompra[]
   locacoes   Locacao[]
   avaliacoes AvaliacaoFornecedor[]
+  despesas   Despesa[]
 
   @@unique([empresaId, cnpj])
 }
@@ -696,6 +700,10 @@ model OrdemCompra {
   fornecedorId  String
   numero        String    @unique
   valorTotal    Decimal   @db.Decimal(14, 2)
+  /// Prazo combinado com o fornecedor; vira o vencimento da conta na entrega.
+  prazoPagamentoDias Int      @default(30)
+  emitidaPorId       String?
+  emitidaEm          DateTime @default(now())
   enviadaEm     DateTime?
   entregueEm    DateTime?
 
@@ -719,11 +727,27 @@ model Despesa {
   criadoPorId    String
   criadoEm       DateTime       @default(now())
 
-  obra  Obra         @relation(fields: [obraId], references: [id], onDelete: Cascade)
-  etapa Etapa?       @relation(fields: [etapaId], references: [id])
-  ordem OrdemCompra? @relation(fields: [ordemCompraId], references: [id])
+  // ---- Contas a pagar ----
+  // Toda despesa é também uma conta: "pagamento" nulo = ainda falta pagar.
+  favorecido     String?
+  fornecedorId   String?
+  vencimento     DateTime?      @db.Date
+  pixChave       String?
+  /// BR Code completo ("copia e cola"), lido do documento ou gerado a partir da chave.
+  pixCopiaECola  String?
+  linhaDigitavel String?
+  /// MANUAL | DOCUMENTO | COMPRA
+  origem         String?
+  documentoNome  String?
+  pagoPorId      String?
+
+  obra       Obra         @relation(fields: [obraId], references: [id], onDelete: Cascade)
+  etapa      Etapa?       @relation(fields: [etapaId], references: [id])
+  ordem      OrdemCompra? @relation(fields: [ordemCompraId], references: [id])
+  fornecedor Fornecedor?  @relation(fields: [fornecedorId], references: [id])
 
   @@index([obraId, competencia])
+  @@index([obraId, pagamento, vencimento])
 }
 
 // ------------------------------ MÓDULOS 7, 8: FOTOS, OCORRÊNCIAS -----

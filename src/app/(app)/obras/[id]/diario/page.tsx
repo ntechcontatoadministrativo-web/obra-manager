@@ -66,7 +66,10 @@ export default async function DiarioLista({ params }: { params: { id: string } }
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-end justify-between gap-3">
-          <h2 className="font-display text-xl font-semibold">Relatório do período</h2>
+          <div>
+            <h2 className="font-display text-xl font-semibold">Relatório do período</h2>
+            <p className="text-sm text-muted">Um dia só, no formato de papel? Abra o dia e use “RDO em PDF”, ou baixe o <Link href={`/obras/${params.id}/diario/${hoje}/rdo?branco=1`} className="font-medium text-laranja hover:underline">modelo de RDO em branco</Link>.</p>
+          </div>
           <form method="get" action={`/obras/${params.id}/diario/relatorio`} className="flex flex-wrap items-end gap-2">
             <label className="space-y-1 text-sm"><span className="block text-muted">De</span><input type="date" name="de" required defaultValue={somarDias(hoje, -6)} max={hoje} className="min-h-11 rounded border border-line bg-card px-3" /></label>
             <label className="space-y-1 text-sm"><span className="block text-muted">Até</span><input type="date" name="ate" required defaultValue={hoje} max={hoje} className="min-h-11 rounded border border-line bg-card px-3" /></label>
