@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/session";
 import { can, ForbiddenError } from "@/lib/auth/permissions";
 import { perfilNaObra } from "@/lib/auth/guard";
-import { desvioDePreco, statusAoAprovar, type CompraStatus } from "@/lib/compras";
+import { aceitaAnexo, desvioDePreco, statusAoAprovar, type CategoriaAnexo, type CompraStatus, type MeioPagamento } from "@/lib/compras";
 import { brl } from "@/lib/utils";
 import { Card, TITULO } from "@/components/ui";
 import { ListaCompras, NovaSolicitacao, type CompraCartao } from "./compras";
@@ -34,6 +34,8 @@ export default async function ComprasPage({ params }: { params: { id: string } }
         etapa: { select: { nome: true } },
         itens: { include: { insumo: { select: { id: true, nome: true, unidade: true } } } },
         ordem: { include: { fornecedor: { select: { nome: true, pixChave: true } }, despesa: { select: { pagamento: true } } } },
+        // Sem o conteúdo: o arquivo só é lido ao abrir o link.
+        anexos: { orderBy: { criadoEm: "asc" }, select: { id: true, categoria: true, nome: true, tipo: true, tamanho: true, enviadoPorId: true } },
       },
     }),
     prisma.etapa.findMany({ where: { obraId: params.id }, orderBy: { ordem: "asc" }, select: { id: true, nome: true } }),
@@ -55,6 +57,7 @@ export default async function ComprasPage({ params }: { params: { id: string } }
 
   const podeAprovarAlgo = can(perfil, "compra", "aprovar");
   const podeEmitir = can(perfil, "compra", "editar");
+  const mexe = can(perfil, "compra", "criar") || podeEmitir || podeAprovarAlgo;
   const cartoes: CompraCartao[] = solicitacoes
     .sort((a, b) => ORDEM[a.status] - ORDEM[b.status])
     .map((s) => ({
@@ -79,6 +82,13 @@ export default async function ComprasPage({ params }: { params: { id: string } }
         numero: s.ordem.numero, fornecedor: s.ordem.fornecedor.nome, valorTotal: Number(s.ordem.valorTotal),
         prazoPagamentoDias: s.ordem.prazoPagamentoDias, paga: !!s.ordem.despesa?.pagamento,
       },
+      anexos: s.anexos.map((a) => ({
+        id: a.id, categoria: a.categoria as CategoriaAnexo, nome: a.nome, tipo: a.tipo, tamanho: a.tamanho,
+        podeRemover: s.status !== "ENTREGUE" && (a.enviadoPorId === user.id || podeEmitir || podeAprovarAlgo),
+      })),
+      podeAnexar: mexe && aceitaAnexo(s.status),
+      pagamento: { meio: s.meioPagamento as MeioPagamento | null, pix: s.pagamentoPix, linhaDigitavel: s.pagamentoLinhaDigitavel },
+      podeMudarPagamento: mexe && !["ENTREGUE", "REPROVADA", "CANCELADA"].includes(s.status),
       podeAprovar: statusAoAprovar(perfil, s.status, Number(s.valorEstimado), limite) != null,
       acimaDoLimite: Number(s.valorEstimado) > limite,
       podeCancelar: (s.solicitanteId === user.id && s.status === "AGUARDANDO_ADMIN_OBRA") || (podeAprovarAlgo && ["AGUARDANDO_ADMIN_OBRA", "AGUARDANDO_SUPER_ADMIN", "APROVADA", "PO_EMITIDA", "ENVIADA_FORNECEDOR"].includes(s.status)),

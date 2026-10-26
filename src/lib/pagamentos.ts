@@ -78,7 +78,7 @@ export async function contasEmAberto(db: PrismaClient, obraIds: string[]) {
     where: { obraId: { in: obraIds }, pagamento: null },
     select: {
       id: true, obraId: true, descricao: true, favorecido: true, valor: true, vencimento: true, tipo: true,
-      pixChave: true, pixCopiaECola: true, linhaDigitavel: true, origem: true, documentoNome: true,
+      pixChave: true, pixCopiaECola: true, linhaDigitavel: true, origem: true, documentoNome: true, documentoUrl: true,
       obra: { select: { nome: true } },
       fornecedor: { select: { nome: true } },
       ordem: { select: { numero: true } },
@@ -89,7 +89,7 @@ export async function contasEmAberto(db: PrismaClient, obraIds: string[]) {
     const favorecido = l.favorecido ?? l.fornecedor?.nome ?? "";
     return {
       id: l.id, obraId: l.obraId, obraNome: l.obra.nome, descricao: l.descricao, favorecido, valor,
-      vencimento: isoOuNull(l.vencimento), tipo: l.tipo, origem: l.origem, documentoNome: l.documentoNome,
+      vencimento: isoOuNull(l.vencimento), tipo: l.tipo, origem: l.origem, documentoNome: l.documentoNome, documentoUrl: l.documentoUrl,
       ordemNumero: l.ordem?.numero ?? null, linhaDigitavel: l.linhaDigitavel, pixChave: l.pixChave,
       pix: pixDaConta({ pixCopiaECola: l.pixCopiaECola, pixChave: l.pixChave, valor, favorecido, id: l.id }),
     };

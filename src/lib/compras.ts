@@ -1,3 +1,5 @@
+import { lerPix } from "./pix";
+
 /**
  * Fluxo de aprovação de compras:
  * Solicitação (Encarregado) -> Admin da Obra -> [se acima do limite] Super Admin -> PO.
@@ -58,6 +60,47 @@ export const ROTULO_COMPRA: Record<CompraStatus, { rotulo: string; tom: "neutro"
   ENTREGUE: { rotulo: "Entregue", tom: "ok" },
   CANCELADA: { rotulo: "Cancelada", tom: "neutro" },
 };
+
+/** Anexos da solicitação, guardados no banco: até 3 pedidos (do fornecedor, orçamento) e 1 boleto. */
+export type CategoriaAnexo = "PEDIDO" | "BOLETO";
+export const LIMITE_ANEXOS: Record<CategoriaAnexo, number> = { PEDIDO: 3, BOLETO: 1 };
+export const MAX_ANEXO_BYTES = 1_500_000; // o corpo da Server Action vai até 2 MB
+
+export type TipoAnexo = "application/pdf" | "image/jpeg" | "image/png" | "image/webp";
+
+/** Tipo real pelos primeiros bytes; o que o navegador diz não vale. Fora da lista = null. */
+export function tipoDoAnexo(b: Uint8Array): TipoAnexo | null {
+  const ini = (...m: number[]) => m.every((v, i) => b[i] === v);
+  if (ini(0x25, 0x50, 0x44, 0x46)) return "application/pdf"; // %PDF
+  if (ini(0xff, 0xd8, 0xff)) return "image/jpeg";
+  if (ini(0x89, 0x50, 0x4e, 0x47)) return "image/png";
+  if (ini(0x52, 0x49, 0x46, 0x46) && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return "image/webp"; // RIFF....WEBP
+  return null;
+}
+
+/** Status em que a solicitação ainda aceita anexos. */
+export const aceitaAnexo = (s: CompraStatus) => s !== "REPROVADA" && s !== "CANCELADA";
+
+/** Como o fornecedor quer receber. */
+export type MeioPagamento = "PIX" | "BOLETO";
+
+/**
+ * Dados de pagamento da conta que nasce na entrega. Pediu PIX: o código copia e cola
+ * (se válido) ou a chave informada. Pediu boleto: a linha digitável, sem PIX, para
+ * ninguém pagar pelo caminho errado. Sem escolha: a chave PIX do cadastro do fornecedor.
+ */
+export function pagamentoDaConta(
+  s: { meioPagamento: string | null; pagamentoPix: string | null; pagamentoLinhaDigitavel: string | null },
+  pixDoFornecedor: string | null,
+): { pixChave: string | null; pixCopiaECola: string | null; linhaDigitavel: string | null } {
+  if (s.meioPagamento === "BOLETO") return { pixChave: null, pixCopiaECola: null, linhaDigitavel: s.pagamentoLinhaDigitavel };
+  if (s.meioPagamento === "PIX" && s.pagamentoPix) {
+    return lerPix(s.pagamentoPix)
+      ? { pixChave: pixDoFornecedor, pixCopiaECola: s.pagamentoPix, linhaDigitavel: null }
+      : { pixChave: s.pagamentoPix, pixCopiaECola: null, linhaDigitavel: null };
+  }
+  return { pixChave: pixDoFornecedor, pixCopiaECola: null, linhaDigitavel: null };
+}
 
 /** Alerta de desvio de preço: cotação acima da média histórica em X%. */
 export function desvioDePreco(precoCotado: number, historico: number[], limitePct: number) {

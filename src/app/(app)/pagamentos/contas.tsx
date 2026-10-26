@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import QRCode from "qrcode";
-import { Check, Copy, FileUp, Plus, QrCode, Trash2, Undo2, X } from "lucide-react";
+import { Check, Copy, FileText, FileUp, Plus, QrCode, Trash2, Undo2, X } from "lucide-react";
 import { Badge, Button, Campo, Card, Input, Select, Textarea } from "@/components/ui";
 import { ROTULO_SITUACAO, situacao } from "@/lib/pagamentos";
 import { formatarLinha } from "@/lib/boleto";
@@ -11,7 +11,7 @@ import { desfazerPagamento, excluirConta, lerDocumento, marcarPaga, salvarConta 
 
 export type ContaLinha = {
   id: string; obraId: string; obraNome: string; descricao: string; favorecido: string; valor: number;
-  vencimento: string | null; origem: string | null; documentoNome: string | null; ordemNumero: string | null;
+  vencimento: string | null; origem: string | null; documentoNome: string | null; documentoUrl: string | null; ordemNumero: string | null;
   linhaDigitavel: string | null; pixChave: string | null; pix: string | null;
   podePagar: boolean; podeExcluir: boolean;
 };
@@ -97,7 +97,12 @@ export function ListaContas({ contas, hoje }: { contas: ContaLinha[]; hoje: stri
                     {copiado === c.id + "bol" ? "Linha copiada" : "Copiar boleto"}
                   </Button>
                 )}
-                {!c.pix && !c.linhaDigitavel && <span className="self-center text-xs text-muted">Sem PIX nem boleto cadastrado.</span>}
+                {c.documentoUrl && (
+                  <a href={c.documentoUrl} target="_blank" rel="noopener" className="inline-flex min-h-9 items-center gap-2 rounded border border-line bg-card px-3 text-sm font-semibold hover:bg-bg">
+                    <FileText size={16} aria-hidden /> Ver boleto
+                  </a>
+                )}
+                {!c.pix && !c.linhaDigitavel && !c.documentoUrl && <span className="self-center text-xs text-muted">Sem PIX nem boleto cadastrado.</span>}
                 <span className="flex-1" />
                 {c.podePagar && <Button className="min-h-9 px-3" disabled={pend} onClick={() => rodar(() => marcarPaga({ id: c.id }))}><Check size={16} aria-hidden /> Marcar como paga</Button>}
                 {c.podeExcluir && (

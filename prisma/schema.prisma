@@ -671,16 +671,40 @@ model SolicitacaoCompra {
   aprovadoAdminObraPorId  String?
   aprovadoSuperAdminPorId String?
   motivoReprovacao        String?
+  /// Como o fornecedor quer receber: PIX | BOLETO. Nulo = ainda não definido.
+  meioPagamento           String?
+  /// Chave PIX ou código copia e cola informado no pedido.
+  pagamentoPix            String?
+  /// Linha digitável do boleto (só dígitos); o arquivo vai como anexo BOLETO.
+  pagamentoLinhaDigitavel String?
   criadoEm                DateTime     @default(now())
   atualizadoEm            DateTime     @updatedAt
 
   obra  Obra              @relation(fields: [obraId], references: [id], onDelete: Cascade)
   etapa Etapa?            @relation(fields: [etapaId], references: [id])
   itens SolicitacaoItem[]
-  ordem OrdemCompra?
-  fotos Foto[]
+  ordem   OrdemCompra?
+  fotos   Foto[]
+  anexos  AnexoCompra[]
 
   @@index([obraId, status])
+}
+
+/// Arquivo da solicitação: PEDIDO (pedido do fornecedor, orçamento; até 3) ou BOLETO (1). PDF ou imagem.
+model AnexoCompra {
+  id            String   @id @default(cuid())
+  solicitacaoId String
+  categoria     String   @default("PEDIDO")
+  nome          String
+  tipo          String // application/pdf | image/jpeg | image/png | image/webp
+  tamanho       Int
+  conteudo      Bytes
+  enviadoPorId  String
+  criadoEm      DateTime @default(now())
+
+  solicitacao SolicitacaoCompra @relation(fields: [solicitacaoId], references: [id], onDelete: Cascade)
+
+  @@index([solicitacaoId])
 }
 
 model SolicitacaoItem {

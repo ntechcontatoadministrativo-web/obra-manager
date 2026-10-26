@@ -6,11 +6,16 @@ import { requireUser } from "@/lib/session";
 import { can, ForbiddenError } from "@/lib/auth/permissions";
 import { exigirPerfilNaObra } from "@/lib/auth/guard";
 import { registrarAuditoria } from "@/lib/audit";
-import { numeroOrdem, statusAoAprovar, transicaoValida, type CompraStatus } from "@/lib/compras";
+import {
+  aceitaAnexo, LIMITE_ANEXOS, MAX_ANEXO_BYTES, numeroOrdem, pagamentoDaConta, statusAoAprovar, tipoDoAnexo, transicaoValida,
+  type CategoriaAnexo, type CompraStatus,
+} from "@/lib/compras";
 import { dataISOValida, dataLocalISO, dataParaBanco } from "@/lib/ponto";
 import { somarDias } from "@/lib/diario";
+import { lerPix } from "@/lib/pix";
+import { acharBoletoNoTexto, lerBoleto } from "@/lib/boleto";
 
-type Res = { ok: boolean; mensagem: string; erros?: Record<string, string> };
+type Res = { ok: boolean; mensagem: string; erros?: Record<string, string>; id?: string };
 const NEGADO: Res = { ok: false, mensagem: "Você não tem permissão para esta ação." };
 type U = Awaited<ReturnType<typeof requireUser>>;
 
@@ -47,6 +52,29 @@ const Item = z.object({
   preco: z.coerce.number().nonnegative().optional(),
 });
 
+const Pagamento = {
+  meioPagamento: z.enum(["PIX", "BOLETO"]).optional(),
+  pagamentoPix: z.string().trim().max(600).optional(),
+  pagamentoLinhaDigitavel: z.string().trim().max(80).optional(),
+};
+
+/** Confere PIX e boleto antes de gravar: código errado vira conta que o banco recusa. */
+function pagamentoValido(d: { meioPagamento?: "PIX" | "BOLETO"; pagamentoPix?: string; pagamentoLinhaDigitavel?: string }):
+  { erros: Record<string, string> } | { dados: { meioPagamento: string | null; pagamentoPix: string | null; pagamentoLinhaDigitavel: string | null } } {
+  if (d.meioPagamento === "PIX") {
+    const pix = d.pagamentoPix ?? "";
+    if (pix.length < 5) return { erros: { pagamentoPix: "Informe a chave PIX ou o código copia e cola." } };
+    if (pix.startsWith("000201") && !lerPix(pix)) return { erros: { pagamentoPix: "Este código PIX não é válido (o dígito de conferência não bate)." } };
+    return { dados: { meioPagamento: "PIX", pagamentoPix: pix, pagamentoLinhaDigitavel: null } };
+  }
+  if (d.meioPagamento === "BOLETO") {
+    const linha = d.pagamentoLinhaDigitavel?.replace(/\D/g, "") || null;
+    if (linha && !lerBoleto(linha)) return { erros: { pagamentoLinhaDigitavel: "Linha digitável inválida." } };
+    return { dados: { meioPagamento: "BOLETO", pagamentoPix: null, pagamentoLinhaDigitavel: linha } };
+  }
+  return { dados: { meioPagamento: null, pagamentoPix: null, pagamentoLinhaDigitavel: null } };
+}
+
 export async function criarSolicitacao(entrada: unknown): Promise<Res> {
   const user = await requireUser();
   const p = z.object({
@@ -55,12 +83,15 @@ export async function criarSolicitacao(entrada: unknown): Promise<Res> {
     urgencia: z.enum(["URGENTE", "NORMAL", "PLANEJADA"]),
     justificativa: z.string().trim().min(5, "Para que é a compra?").max(500),
     itens: z.array(Item).min(1, "Inclua pelo menos um item.").max(40),
+    ...Pagamento,
   }).safeParse(entrada);
   if (!p.success) return { ok: false, mensagem: "Confira os campos.", erros: errosDe(p.error) };
 
-  const { obraId, etapaId, itens, ...dados } = p.data;
+  const { obraId, etapaId, itens, meioPagamento, pagamentoPix, pagamentoLinhaDigitavel, ...dados } = p.data;
   const perfil = await perfilOuNull(user, obraId);
   if (!perfil || !can(perfil, "compra", "criar")) return NEGADO;
+  const pag = pagamentoValido({ meioPagamento, pagamentoPix, pagamentoLinhaDigitavel });
+  if ("erros" in pag) return { ok: false, mensagem: "Confira os campos.", erros: pag.erros };
 
   let etapa: string | null = null;
   if (etapaId) {
@@ -83,14 +114,110 @@ export async function criarSolicitacao(entrada: unknown): Promise<Res> {
 
   const criada = await prisma.solicitacaoCompra.create({
     data: {
-      obraId, etapaId: etapa, solicitanteId: user.id, ...dados, valorEstimado,
+      obraId, etapaId: etapa, solicitanteId: user.id, ...dados, ...pag.dados, valorEstimado,
       itens: { create: itens.map((i, n) => ({ insumoId: insumos[n].id, quantidade: i.quantidade, precoUnitEstimado: i.preco ?? null })) },
     },
     select: { id: true },
   });
   await registrarAuditoria(prisma, { userId: user.id, obraId, acao: "CRIAR_COMPRA", entidade: "SolicitacaoCompra", entidadeId: criada.id, depois: { valorEstimado, itens: itens.length } });
   refresh(obraId);
-  return { ok: true, mensagem: "Solicitação enviada para aprovação." };
+  return { ok: true, mensagem: "Solicitação enviada para aprovação.", id: criada.id };
+}
+
+/** Quem abre, compra ou aprova mexe nos anexos e na forma de pagamento. */
+const mexeNaCompra = (perfil: NonNullable<Awaited<ReturnType<typeof perfilOuNull>>>) =>
+  can(perfil, "compra", "criar") || can(perfil, "compra", "editar") || can(perfil, "compra", "aprovar");
+
+export async function definirPagamento(entrada: unknown): Promise<Res> {
+  const user = await requireUser();
+  const p = z.object({ obraId: z.string().min(1), id: z.string().min(1), ...Pagamento }).safeParse(entrada);
+  if (!p.success) return { ok: false, mensagem: "Confira os campos.", erros: errosDe(p.error) };
+  const { obraId, id, ...d } = p.data;
+  const perfil = await perfilOuNull(user, obraId);
+  if (!perfil || !mexeNaCompra(perfil)) return NEGADO;
+  const pag = pagamentoValido(d);
+  if ("erros" in pag) return { ok: false, mensagem: "Confira os campos.", erros: pag.erros };
+
+  // Depois da entrega a conta já existe em Pagamentos: é lá que se corrige.
+  const r = await prisma.solicitacaoCompra.updateMany({
+    where: { id, obraId, status: { notIn: ["ENTREGUE", "REPROVADA", "CANCELADA"] } },
+    data: pag.dados,
+  });
+  if (r.count === 0) return { ok: false, mensagem: "Esta compra não aceita mais mudar o pagamento. Ajuste a conta em Pagamentos." };
+  await registrarAuditoria(prisma, { userId: user.id, obraId, acao: "COMPRA_PAGAMENTO", entidade: "SolicitacaoCompra", entidadeId: id, depois: { meioPagamento: pag.dados.meioPagamento } });
+  refresh(obraId);
+  return { ok: true, mensagem: "Forma de pagamento salva." };
+}
+
+/** Linha digitável impressa no PDF do boleto, se houver texto nele. */
+async function linhaDoPdf(bytes: Uint8Array): Promise<string | null> {
+  try {
+    const { extractText, getDocumentProxy } = await import("unpdf");
+    const { text } = await extractText(await getDocumentProxy(bytes), { mergePages: true });
+    return acharBoletoNoTexto(String(text))?.linha ?? null;
+  } catch { return null; }
+}
+
+export async function anexarArquivo(form: FormData): Promise<Res> {
+  const user = await requireUser();
+  const p = z.object({ obraId: z.string().min(1), id: z.string().min(1), categoria: z.enum(["PEDIDO", "BOLETO"]) })
+    .safeParse({ obraId: form.get("obraId"), id: form.get("id"), categoria: form.get("categoria") });
+  const arquivo = form.get("arquivo");
+  if (!p.success || !(arquivo instanceof File) || arquivo.size === 0) return { ok: false, mensagem: "Escolha um arquivo." };
+  const { obraId, id } = p.data;
+  const categoria: CategoriaAnexo = p.data.categoria;
+  const perfil = await perfilOuNull(user, obraId);
+  if (!perfil || !mexeNaCompra(perfil)) return NEGADO;
+
+  if (arquivo.size > MAX_ANEXO_BYTES) return { ok: false, mensagem: `${arquivo.name}: grande demais (máximo 1,5 MB).` };
+  const bytes = new Uint8Array(await arquivo.arrayBuffer());
+  const tipo = tipoDoAnexo(bytes);
+  if (!tipo) return { ok: false, mensagem: `${arquivo.name}: envie PDF ou foto (JPG, PNG, WEBP).` };
+  // Nome só para exibir e baixar: sem caracteres de controle nem aspas.
+  const nome = arquivo.name.replace(/[\u0000-\u001f"\\/]/g, "").trim().slice(0, 120) || "arquivo";
+
+  const s = await prisma.solicitacaoCompra.findFirst({ where: { id, obraId }, select: { id: true, status: true, meioPagamento: true, pagamentoLinhaDigitavel: true } });
+  if (!s) return { ok: false, mensagem: "Solicitação não encontrada." };
+  if (!aceitaAnexo(s.status)) return { ok: false, mensagem: "Compra reprovada ou cancelada não recebe anexos." };
+
+  const limite = LIMITE_ANEXOS[categoria];
+  const criado = await prisma.$transaction(async (tx) => {
+    const n = await tx.anexoCompra.count({ where: { solicitacaoId: id, categoria } });
+    if (n >= limite) return null;
+    return tx.anexoCompra.create({ data: { solicitacaoId: id, categoria, nome, tipo, tamanho: bytes.length, conteudo: Buffer.from(bytes), enviadoPorId: user.id }, select: { id: true } });
+  });
+  if (!criado) return { ok: false, mensagem: categoria === "BOLETO" ? "Já há um boleto anexado. Remova-o para trocar." : `Limite de ${limite} pedidos anexados.` };
+
+  // Boleto em PDF: a linha digitável sai do próprio arquivo, e o pagamento passa a ser por boleto.
+  let extra = "";
+  if (categoria === "BOLETO") {
+    const linha = s.pagamentoLinhaDigitavel ?? (tipo === "application/pdf" ? await linhaDoPdf(bytes) : null);
+    await prisma.solicitacaoCompra.update({ where: { id }, data: { meioPagamento: "BOLETO", pagamentoPix: null, pagamentoLinhaDigitavel: linha } });
+    if (linha && !s.pagamentoLinhaDigitavel) extra = " Linha digitável lida do boleto.";
+  }
+  await registrarAuditoria(prisma, { userId: user.id, obraId, acao: "ANEXAR_COMPRA", entidade: "AnexoCompra", entidadeId: criado.id, depois: { categoria, nome, tamanho: bytes.length } });
+  refresh(obraId);
+  return { ok: true, mensagem: `${nome} anexado.${extra}` };
+}
+
+export async function removerAnexo(entrada: unknown): Promise<Res> {
+  const user = await requireUser();
+  const p = z.object({ obraId: z.string().min(1), anexoId: z.string().min(1) }).safeParse(entrada);
+  if (!p.success) return { ok: false, mensagem: "Requisição inválida." };
+  const { obraId, anexoId } = p.data;
+  const perfil = await perfilOuNull(user, obraId);
+  if (!perfil) return NEGADO;
+
+  const a = await prisma.anexoCompra.findFirst({ where: { id: anexoId, solicitacao: { obraId } }, select: { id: true, nome: true, enviadoPorId: true, solicitacao: { select: { status: true } } } });
+  if (!a) return { ok: false, mensagem: "Anexo não encontrado." };
+  // Quem enviou remove; fora isso, quem compra ou aprova.
+  if (a.enviadoPorId !== user.id && !can(perfil, "compra", "editar") && !can(perfil, "compra", "aprovar")) return NEGADO;
+  if (a.solicitacao.status === "ENTREGUE") return { ok: false, mensagem: "Compra entregue: o anexo fica como registro." };
+
+  await prisma.anexoCompra.delete({ where: { id: a.id } });
+  await registrarAuditoria(prisma, { userId: user.id, obraId, acao: "REMOVER_ANEXO_COMPRA", entidade: "AnexoCompra", entidadeId: a.id, antes: { nome: a.nome } });
+  refresh(obraId);
+  return { ok: true, mensagem: `${a.nome} removido.` };
 }
 
 export async function aprovarSolicitacao(entrada: unknown): Promise<Res> {
@@ -224,6 +351,8 @@ export async function confirmarEntrega(entrada: unknown): Promise<Res> {
     where: { id: p.data.id, obraId },
     select: {
       id: true, status: true, etapaId: true, justificativa: true,
+      meioPagamento: true, pagamentoPix: true, pagamentoLinhaDigitavel: true,
+      anexos: { where: { categoria: "BOLETO" }, select: { id: true, nome: true }, take: 1 },
       itens: { select: { quantidade: true, insumo: { select: { nome: true, unidade: true } } } },
       ordem: { select: { id: true, numero: true, valorTotal: true, prazoPagamentoDias: true, fornecedor: { select: { id: true, nome: true, pixChave: true } } } },
     },
@@ -236,6 +365,8 @@ export async function confirmarEntrega(entrada: unknown): Promise<Res> {
   const ordem = s.ordem;
   // PO_EMITIDA → ENTREGUE passa por ENVIADA_FORNECEDOR: material que chegou foi enviado.
   const caminho: CompraStatus[] = s.status === "PO_EMITIDA" ? ["ENVIADA_FORNECEDOR", "ENTREGUE"] : ["ENTREGUE"];
+  const pagamento = pagamentoDaConta(s, ordem.fornecedor.pixChave);
+  const boleto = s.meioPagamento === "BOLETO" ? s.anexos[0] : undefined;
 
   const feito = await prisma.$transaction(async (tx) => {
     let de: CompraStatus = s.status;
@@ -251,7 +382,8 @@ export async function confirmarEntrega(entrada: unknown): Promise<Res> {
         descricao: `${ordem.numero}: ${resumo}`.slice(0, 200), valor: ordem.valorTotal,
         formaPagamento: ordem.prazoPagamentoDias > 0 ? "A_PRAZO" : "A_VISTA",
         competencia: dataParaBanco(entrega), vencimento: dataParaBanco(somarDias(entrega, ordem.prazoPagamentoDias)),
-        favorecido: ordem.fornecedor.nome, fornecedorId: ordem.fornecedor.id, pixChave: ordem.fornecedor.pixChave,
+        favorecido: ordem.fornecedor.nome, fornecedorId: ordem.fornecedor.id, ...pagamento,
+        documentoUrl: boleto ? `/obras/${obraId}/compras/anexos/${boleto.id}` : null, documentoNome: boleto?.nome ?? null,
         origem: "COMPRA", criadoPorId: user.id,
       },
     });
