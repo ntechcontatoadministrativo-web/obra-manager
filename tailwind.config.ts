@@ -28,6 +28,7 @@ const config: Config = {
         sans: ['"Segoe UI"', "system-ui", "-apple-system", "Roboto", "sans-serif"],
       },
       borderRadius: { DEFAULT: "6px" },
+      boxShadow: { "1": "var(--sombra-1)", "2": "var(--sombra-2)" },
     },
   },
   plugins: [],

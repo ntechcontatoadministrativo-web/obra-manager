@@ -7,19 +7,19 @@ export const Button = React.forwardRef<HTMLButtonElement, BtnProps>(function But
   { className, variante = "primario", ...p }, ref,
 ) {
   const v = {
-    primario: "bg-laranja text-laranja-fg hover:brightness-110",
-    contorno: "border border-line bg-card text-ink hover:bg-bg",
+    primario: "bg-laranja text-laranja-fg shadow-1 hover:brightness-110 hover:shadow-2",
+    contorno: "border border-line bg-card text-ink shadow-1 hover:border-muted/50 hover:bg-bg",
     fantasma: "text-ink hover:bg-bg",
     perigo: "bg-perigo text-white hover:brightness-110",
   }[variante];
   return (
     <button ref={ref} {...p}
-      className={cn("inline-flex min-h-11 items-center justify-center gap-2 rounded px-4 text-sm font-semibold transition disabled:opacity-50 disabled:pointer-events-none", v, className)} />
+      className={cn("inline-flex min-h-11 items-center justify-center gap-2 rounded px-4 text-sm font-semibold transition duration-150 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none", v, className)} />
   );
 });
 
 /* ---------- Campos ---------- */
-const campo = "min-h-11 w-full rounded border border-line bg-card px-3 text-base text-ink placeholder:text-muted/70";
+const campo = "min-h-11 w-full rounded border border-line bg-card px-3 text-base text-ink shadow-1 transition placeholder:text-muted/70 hover:border-muted/50 focus:border-laranja focus:outline-none focus:ring-4 focus:ring-laranja/15";
 export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
   function Input({ className, ...p }, ref) { return <input ref={ref} className={cn(campo, className)} {...p} />; });
 export const Textarea = (p: React.TextareaHTMLAttributes<HTMLTextAreaElement>) =>
@@ -40,7 +40,7 @@ export function Campo({ label, erro, dica, children }: { label: string; erro?: s
 
 /* ---------- Cartão ---------- */
 export const Card = ({ className, ...p }: React.HTMLAttributes<HTMLDivElement>) =>
-  <div {...p} className={cn("rounded-md border border-line bg-card", className)} />;
+  <div {...p} className={cn("rounded-lg border border-line bg-card shadow-1 transition duration-200", className)} />;
 
 /* ---------- Selo de status ---------- */
 const TONS = {
@@ -51,7 +51,7 @@ const TONS = {
   info: "bg-laranja/10 text-laranja border-laranja/30",
 };
 export const Badge = ({ tom = "neutro", className, ...p }: React.HTMLAttributes<HTMLSpanElement> & { tom?: keyof typeof TONS }) =>
-  <span {...p} className={cn("inline-flex items-center rounded border px-2 py-0.5 text-xs font-semibold", TONS[tom], className)} />;
+  <span {...p} className={cn("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold before:h-1.5 before:w-1.5 before:shrink-0 before:rounded-full before:bg-current before:content-['']", TONS[tom], className)} />;
 
 /* ---------- Barra de progresso (régua de obra: marcas a cada 10%) ---------- */
 export function Progresso({ valor, rotulo, tom = "laranja" }: { valor: number; rotulo: string; tom?: "laranja" | "ok" | "alerta" | "perigo" }) {
@@ -64,8 +64,8 @@ export function Progresso({ valor, rotulo, tom = "laranja" }: { valor: number; r
         <span className="font-display text-base font-semibold tabular-nums">{v.toFixed(1).replace(".", ",")}%</span>
       </div>
       <div role="progressbar" aria-label={rotulo} aria-valuenow={v} aria-valuemin={0} aria-valuemax={100}
-        className="relative h-3 overflow-hidden rounded-sm bg-bg ring-1 ring-line">
-        <div className={cn("h-full", cor)} style={{ width: `${v}%` }} />
+        className="relative h-3 overflow-hidden rounded-full bg-bg ring-1 ring-inset ring-line">
+        <div className={cn("h-full rounded-full bg-gradient-to-b from-white/20 to-transparent transition-[width] duration-700 ease-out", cor)} style={{ width: `${v}%` }} />
         <div className="pointer-events-none absolute inset-0 opacity-40"
           style={{ backgroundImage: "repeating-linear-gradient(90deg, transparent 0 calc(10% - 1px), rgb(var(--card)) calc(10% - 1px) 10%)" }} />
       </div>
